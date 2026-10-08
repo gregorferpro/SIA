@@ -114,6 +114,20 @@ class FlujoSoporteCompraTests(APITestCase):
         # Jefe de UTIC evalúa la viabilidad: al aprobarla, recién
         # ahí se genera el expediente real y vinculado en Compras.
         self.autenticar("JEFE_UTIC")
+        informe_generado = Ticket.objects.get(pk=pk).informe_compra.name
+        r = self.client.get(f"/api/soporte/tickets/{pk}/informe-requerimiento-pdf/")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(b"".join(r.streaming_content).startswith(b"%PDF-"))
+        self.assertEqual(Ticket.objects.get(pk=pk).informe_compra.name, informe_generado)
+        r = self.client.post(f"/api/soporte/tickets/{pk}/validar-viabilidad-compra/", {}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        ticket = Ticket.objects.get(pk=pk)
+        self.assertEqual(ticket.estado_compra_componente, "VIABLE")
+        self.assertEqual(ticket.informe_compra.name, informe_generado)
+        self.assertFalse(ticket.codigo_compra_vinculada)
+        self.assertFalse(SolicitudCompra.objects.filter(ticket_soporte_id=pk).exists())
+        r = self.client.post(f"/api/soporte/tickets/{pk}/evaluar-viabilidad-compra/", {"viable": True}, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
         r = self.client.post(f"/api/soporte/tickets/{pk}/evaluar-viabilidad-compra/", {
             "poa": SimpleUploadedFile("poa.pdf", b"poa"),
             "pedido": SimpleUploadedFile("proveido.pdf", b"proveido"),
@@ -292,7 +306,6 @@ class FlujoSoporteCompraTests(APITestCase):
     def test_conformidad_positiva_espera_informe_final_del_jefe(self):
         pk = self.crear_ticket_en_ejecucion("Equipo reparado", "PC")
         ticket = Ticket.objects.get(pk=pk)
-        ticket.estado = EstadoTicket.objects.get(codigo="PENDIENTE_CONFORMIDAD")
         ticket.diagnostico = "Falla de memoria"
         ticket.solucion = "Memoria reinstalada"
         ticket.resultado_pruebas = "Pruebas satisfactorias"
@@ -300,6 +313,18 @@ class FlujoSoporteCompraTests(APITestCase):
         ticket.save(update_fields=[
             "estado", "diagnostico", "solucion", "resultado_pruebas", "informe_tecnico",
         ])
+
+        firma_tecnico = [[[10, 20], [120, 60], [200, 30]]]
+        url_pruebas = f"/api/soporte/tickets/{pk}/pruebas-tecnicas/"
+        cuerpo = {"resultado_pruebas": ticket.resultado_pruebas, "informe_tecnico": ticket.informe_tecnico}
+        self.assertEqual(self.client.post(url_pruebas, cuerpo, format="json").status_code, 400)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.estado.codigo, "EN_EJECUCION")
+        r = self.client.post(url_pruebas, {**cuerpo, "firma": firma_tecnico}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        ticket.refresh_from_db()
+        with ticket.informe_tecnico_pdf.open('rb') as archivo:
+            self.assertIn(b'1.3 w', archivo.read())
 
         self.autenticar("SOLICITANTE")
         r = self.client.post(
@@ -310,11 +335,13 @@ class FlujoSoporteCompraTests(APITestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data["ticket"]["estado_codigo"], "PENDIENTE_INFORME_FINAL")
         self.assertIsNone(Ticket.objects.get(pk=pk).cerrado_en)
+        from usuarios.models import DocumentoProceso
+        self.assertEqual(DocumentoProceso.objects.get(soporte=ticket, tipo='Conformidad del solicitante').firma, [])
 
         self.autenticar("JEFE_UTIC")
         r = self.client.post(
             f"/api/soporte/tickets/{pk}/elaborar-informe-final/",
-            {"informe_final": "Atención verificada y expediente validado."},
+            {"informe_final": "Atención verificada y expediente validado.", "firma": [[[20, 30], [150, 80]]]},
             format="json",
         )
         self.assertEqual(r.status_code, 200, r.data)
@@ -322,6 +349,11 @@ class FlujoSoporteCompraTests(APITestCase):
         self.assertEqual(ticket.estado.codigo, "CERRADO")
         self.assertIsNotNone(ticket.cerrado_en)
         self.assertTrue(ticket.informe_final_pdf)
+        with ticket.informe_final_pdf.open('rb') as archivo:
+            pdf = archivo.read()
+        self.assertIn(b'ESPECIALISTA', pdf)
+        self.assertIn(b'JEFE_UTIC', pdf)
+        self.assertEqual(pdf.count(b'1.3 w'), 2)
 
         self.autenticar("SOLICITANTE")
         r = self.client.post(

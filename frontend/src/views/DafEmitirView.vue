@@ -13,52 +13,35 @@
         <UsuarioHeader @actualizar="cargar" />
       </header>
 
-      <div class="gestion-tickets-layout vista-cert">
+      <section class="cert-bandeja" aria-labelledby="pendientes-cert">
+        <div class="cert-bandeja-head">
+          <div><h2 id="pendientes-cert">Pendientes de certificación</h2><p>Seleccione un requerimiento para revisar sus documentos y emitir el certificado.</p></div>
+          <span class="cert-count" aria-live="polite">{{ porCertificar.length }} por emitir</span>
+        </div>
+        <label class="cert-search">Buscar requerimiento
+          <input v-model="busquedaCert" type="search" placeholder="Buscar por código, título o solicitante…">
+        </label>
+        <p v-if="errorCarga" class="cert-error" role="alert">{{ errorCarga }}</p>
+        <p v-else-if="cargando" class="cert-empty" role="status">Cargando requerimientos…</p>
+        <div v-else class="cert-table-wrap">
+          <table class="cert-table">
+            <thead><tr><th>Código</th><th>Requerimiento</th><th>Solicitante / área</th><th>Monto estimado</th><th>Estado</th><th>Acción</th></tr></thead>
+            <tbody>
+              <tr v-for="r in certFiltradas" :key="r.id">
+                <td><strong>{{ r.codigo }}</strong></td><td>{{ r.titulo }}</td>
+                <td>{{ r.solicitante_nombre || 'Sin registro' }}<small>{{ r.area_nombre || r.area || 'Sin área' }}</small></td>
+                <td class="cert-monto">Bs. {{ Number(r.monto_estimado || 0).toLocaleString('es-BO', { minimumFractionDigits: 2 }) }}</td>
+                <td><span class="cert-status">Por certificar</span></td>
+                <td><button class="sia-primary" @click="abrir(r)">Elaborar certificado</button></td>
+              </tr>
+              <tr v-if="!certFiltradas.length"><td colspan="6" class="cert-empty">{{ busquedaCert ? 'No se encontraron requerimientos con esa búsqueda.' : 'No hay requerimientos pendientes de certificación.' }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
 
-        <!-- ---------- COLUMNA IZQUIERDA: selector + expediente ---------- -->
-        <div class="cert-col-izq">
-
-          <div class="selector-informe selector-cert">
-            <div class="selector-encabezado">
-              <span class="selector-label">Pendientes de Certificaci&oacute;n</span>
-              <span class="badge">{{ porCertificar.length }} por emitir</span>
-            </div>
-
-            <button
-              type="button"
-              :class="['selector-trigger', selectorCertAbierto ? 'abierto' : '']"
-              @click="selectorCertAbierto = !selectorCertAbierto"
-            >
-              <span v-if="itemActivo" class="selector-valor"><b>{{ itemActivo.codigo }}</b> &mdash; {{ itemActivo.titulo }}</span>
-              <span v-else class="selector-valor vacio">Seleccione un expediente</span>
-              <i :class="['selector-flecha', selectorCertAbierto ? 'abierta' : '']">&#9662;</i>
-            </button>
-
-            <div v-if="selectorCertAbierto" class="selector-panel">
-              <div class="g-buscar">
-                <input v-model="busquedaCert" type="text" placeholder="&#128269; Buscar por c&oacute;digo, t&iacute;tulo o solicitante...">
-              </div>
-              <div class="selector-cabecera"><span>C&oacute;digo</span><span>T&iacute;tulo</span><span>Estado</span></div>
-              <div class="selector-lista">
-                <button
-                  v-for="r in certFiltradas"
-                  :key="r.id"
-                  type="button"
-                  :class="['selector-fila', itemActivo?.id === r.id ? 'activo' : '']"
-                  @click="abrir(r); selectorCertAbierto = false"
-                >
-                  <span class="c-codigo">{{ r.codigo }}</span>
-                  <span class="c-titulo"><b>{{ r.titulo }}</b><small>Monto Estimado: Bs. {{ r.monto_estimado || 's/d' }}</small></span>
-                  <em class="e-validar">Requiere Certificaci&oacute;n</em>
-                </button>
-                <div v-if="!certFiltradas.length" class="empty-list">
-                  Bandeja al d&iacute;a. No hay expedientes pendientes de certificaci&oacute;n.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- CABECERA COMPACTA -->
+    <ModalSia v-if="itemActivo" :titulo="`Certificación presupuestaria · ${itemActivo.codigo}`" :ocupado="procesando" amplio @cerrar="itemActivo = null">
             <div v-if="itemActivo" class="ticket-header-card compact-header">
               <div class="t-head">
                 <h2>{{ itemActivo.titulo }}</h2>
@@ -66,7 +49,7 @@
               </div>
               <div class="compact-meta">
                 <span>👤 <b>Solicitante:</b> {{ itemActivo.solicitante_nombre || 's/d' }}</span>
-                <span>📌 <b>&Aacute;rea:</b> {{ itemActivo.area || 's/d' }}</span>
+                <span>📌 <b>&Aacute;rea:</b> {{ itemActivo.area_nombre || itemActivo.area || 's/d' }}</span>
                 <span>💰 <b>Monto:</b> Bs. {{ itemActivo.monto_estimado || 's/d' }}</span>
               </div>
               <div class="evidence-box">
@@ -74,23 +57,20 @@
                   <strong>Documentos adjuntos</strong>
                 </div>
                 <div class="doc-links">
-                  <a v-if="itemActivo.informe" :href="itemActivo.informe" target="_blank" class="evidence-btn">Informe 👁</a>
-                  <a v-if="itemActivo.poa" :href="itemActivo.poa" target="_blank" class="evidence-btn">POA 👁</a>
-                  <a v-if="itemActivo.pedido" :href="itemActivo.pedido" target="_blank" class="evidence-btn">Proveído 👁</a>
-                  <a v-if="itemActivo.proforma" :href="itemActivo.proforma" target="_blank" class="evidence-btn">Proforma 👁</a>
+                  <a v-if="itemActivo.informe" :href="itemActivo.informe" target="_blank" rel="noopener" class="evidence-btn">Informe 👁</a>
+                  <a v-if="itemActivo.poa" :href="itemActivo.poa" target="_blank" rel="noopener" class="evidence-btn">POA 👁</a>
+                  <a v-if="itemActivo.pedido" :href="itemActivo.pedido" target="_blank" rel="noopener" class="evidence-btn">Proveído 👁</a>
+                  <a v-if="itemActivo.proforma" :href="itemActivo.proforma" target="_blank" rel="noopener" class="evidence-btn">Proforma 👁</a>
                 </div>
               </div>
             </div>
-        </div>
 
-        <!-- ---------- COLUMNA DERECHA: emisi&oacute;n ---------- -->
-        <div class="cert-col-der">
-          <div v-if="!itemActivo" class="empty" style="margin-top: 40px;">
-            <span style="font-size:30px">&marker;</span>
-            <h3>Seleccione un expediente</h3>
-            <p>Seleccione una solicitud de compra de la lista para emitir su certificaci&oacute;n presupuestaria.</p>
-          </div>
-                      <div v-else class="workflow-card">
+      <ol class="cert-pasos" aria-label="Pasos para emitir">
+        <li><b>1</b><span>Revisar requerimiento y documentos</span></li>
+        <li><b>2</b><span>Seleccionar partida y completar datos</span></li>
+        <li><b>3</b><span>Verificar monto y emitir certificado</span></li>
+      </ol>
+                      <div class="workflow-card">
               <div class="wf-header">Emitir Certificaci&oacute;n Presupuestaria</div>
               <div class="cert-scroll-body">
 
@@ -109,14 +89,14 @@
                         @focus="showDropdown = true"
                       />
                       <div class="search-results" v-if="showDropdown">
-                        <div 
+                        <button type="button"
                           v-for="p in partidasFiltradas" 
                           :key="p.codigo" 
                           class="search-item" 
                           @click="seleccionarPartida(p)"
                         >
                           <b>{{ p.codigo }}</b> &mdash; {{ p.descripcion }}
-                        </div>
+                        </button>
                         <div v-if="partidasFiltradas.length === 0" class="search-item search-empty">
                           No se encontraron coincidencias
                         </div>
@@ -232,9 +212,7 @@
                 </div>
               </div>
             </div>
-        </div>
-      </div>
-    </main>
+    </ModalSia>
 
     <!-- SUCCESS MODAL -->
     <div v-if="mostrarModalExito" class="detalle-modal-backdrop" @click.self="cerrarModalExito">
@@ -251,6 +229,7 @@
 
 <script setup>
 import UsuarioHeader from '../components/UsuarioHeader.vue'
+import ModalSia from '../components/ModalSia.vue'
 import { ref, computed, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import DafMenu from '../components/DafMenu.vue'
@@ -276,9 +255,8 @@ function cerrarModalExito() {
 }
 
 
-/* Selector compacto: solo presentacion. Filtra en memoria la MISMA
-   lista porCertificar y la seleccion sigue llamando a abrir(). */
-const selectorCertAbierto = ref(false)
+/* Búsqueda local sobre los expedientes listos para certificar. */
+const errorCarga = ref('')
 const busquedaCert = ref('')
 
 const certFiltradas = computed(() => {
@@ -392,6 +370,7 @@ function montoALiteral(monto) {
 
 async function cargar() {
   cargando.value = true
+  errorCarga.value = ''
   try {
     const r = await fetch('/api/compras/solicitudes/?bandeja=certificacion', {
       headers: { Authorization: `Token ${token()}` }
@@ -401,7 +380,7 @@ async function cargar() {
     items.value = Array.isArray(d) ? d : d.results || []
     if (itemActivo.value && !porCertificar.value.some(r=>r.id===itemActivo.value.id)) itemActivo.value = null
   } catch (e) {
-    console.error(e)
+    errorCarga.value = 'No se pudieron cargar los requerimientos. Pulse Actualizar para reintentar.'
   } finally {
     cargando.value = false
   }
@@ -409,6 +388,7 @@ async function cargar() {
 
 function abrir(item) {
   itemActivo.value = item
+  showDropdown.value = false
   formCert.partida = null
   formCert.partida_confirmada = false
   searchPartida.value = ''
@@ -420,7 +400,7 @@ function abrir(item) {
   formCert.tipo_cambio = 6.96
   formCert.fuente_financiamiento = '2 - Recursos Propios'
   
-  formCert.unidad_solicitante = item.area || '13200 MANTENIMIENTO / UTIC'
+  formCert.unidad_solicitante = item.area_nombre || item.area || item.solicitante_nombre || ''
   formCert.doc_referencia = item.codigo
   formCert.informe_tecnico = `INF-TEC-${item.codigo}`
   formCert.glosa = item.descripcion || ''
@@ -603,6 +583,7 @@ async function emitirCertificacion() {
 
     mostrarModalExito.value = true
     itemActivo.value = null
+    window.dispatchEvent(new Event('sia-certificaciones-actualizadas'))
     await cargar()
   } catch (e) {
     alert(e.message)
@@ -618,70 +599,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* ==========================================================
-   SELECTOR COMPACTO + DOS COLUMNAS
-   Mismo patron visual que "Informes de los tecnicos": la bandeja
-   deja de ocupar una columna entera y pasa a un desplegable; el
-   formulario de certificacion se queda con todo el ancho y alto.
-   Los estilos van aqui porque los de aquella pantalla son scoped.
-   ========================================================== */
-
-.vista-cert { overflow: visible; gap: 16px; }
-
-.cert-col-izq {
-  width: 40%;
-  min-width: 320px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  overflow: visible;
-}
-
-.cert-col-der {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.cert-col-izq .ticket-header-card { flex: 0 1 auto; min-height: 0; overflow-y: auto; }
-.cert-col-der .workflow-card { flex: 1; min-height: 0; }
-.cert-col-der > .empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px; margin: 0 !important; }
-
-.selector-informe { position: relative; flex-shrink: 0; background: var(--sigta-blanco); border: 1px solid var(--sigta-borde); border-radius: 10px; padding: 10px 12px; }
-.selector-encabezado { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
-.selector-label { display: block; font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--sigta-texto-suave); }
-.selector-trigger { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 9px 12px; font-family: inherit; font-size: 13px; color: var(--sigta-texto); background: #f8fafc; border: 1px solid var(--sigta-borde); border-radius: 8px; cursor: pointer; }
-.selector-trigger:hover { border-color: var(--sigta-azul); }
-.selector-trigger.abierto { border-color: var(--sigta-azul); }
-.selector-valor { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.selector-valor b { color: var(--sigta-azul); }
-.selector-valor.vacio { color: var(--sigta-texto-suave); }
-.selector-flecha { font-style: normal; color: var(--sigta-texto-suave); transition: transform .2s; }
-.selector-flecha.abierta { transform: rotate(180deg); }
-.selector-panel { position: absolute; z-index: 15; top: calc(100% - 2px); left: 12px; right: 12px; max-height: 340px; display: flex; flex-direction: column; background: var(--sigta-blanco); border: 1px solid var(--sigta-borde); border-radius: 10px; box-shadow: 0 12px 28px rgba(18,58,107,.16); overflow: hidden; }
-.selector-panel .g-buscar { padding: 10px 10px 8px; }
-.selector-panel .g-buscar input { width: 100%; border: 1px solid var(--sigta-borde); border-radius: 8px; padding: 7px 10px; font-family: inherit; font-size: 12px; color: var(--sigta-texto); outline: none; }
-.selector-cabecera { display: grid; grid-template-columns: 105px 1fr 108px; gap: 8px; padding: 7px 12px; font-size: 9.5px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; color: var(--sigta-texto-suave); background: #f8fafc; border-top: 1px solid var(--sigta-borde-suave); border-bottom: 1px solid var(--sigta-borde-suave); }
-.selector-lista { overflow-y: auto; padding: 4px; }
-.selector-fila { display: grid; grid-template-columns: 105px 1fr 108px; gap: 8px; align-items: start; width: 100%; text-align: left; padding: 8px; font-family: inherit; background: transparent; border: 0; border-radius: 7px; cursor: pointer; }
-.selector-fila:hover { background: #f1f5f9; }
-.selector-fila.activo { background: var(--sigta-azul-tenue); }
-.selector-fila .c-codigo { font-size: 11.5px; font-weight: 800; color: var(--sigta-azul); }
-.selector-fila .c-titulo { display: block; overflow: hidden; }
-.selector-fila .c-titulo b { display: block; font-size: 12.5px; color: var(--sigta-texto); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.selector-fila .c-titulo small { display: block; margin-top: 2px; font-size: 10.5px; color: var(--sigta-texto-suave); }
-.selector-fila em { align-self: center; font-size: 9px; font-style: normal; text-align: center; padding: 3px 6px; border-radius: 10px; line-height: 1.25; background: #fee2e2; color: #b91c1c; }
-.selector-panel .empty-list { padding: 16px 12px; text-align: center; font-size: 12px; color: var(--sigta-texto-suave); }
-
-@media (max-width: 1050px) {
-  .vista-cert { height: auto; flex-direction: column; }
-  .cert-col-izq { width: 100%; min-width: 0; }
-}
-
-@import '../assets/role-theme.css';
-
 /* ====== GESTIÓN DE TICKETS LAYOUT (from reference) ====== */
 .barra-perfil { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 14px; }
 .gestion-tickets-layout { display: flex; gap: 20px; height: calc(100vh - 232px); min-height: 460px; overflow: hidden; align-items: stretch; }
@@ -868,4 +785,23 @@ onMounted(() => {
   transform: translateY(-2px);
   box-shadow: 0 4px 10px rgba(22, 163, 74, 0.3);
 }
+
+.cert-bandeja { background:white; border:1px solid var(--sigta-borde); border-radius:14px; padding:24px; margin-top:24px; }
+.cert-bandeja-head { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:22px; }
+.cert-bandeja-head h2 { font-size:18px; margin:0 0 6px; color:var(--sigta-azul); }
+.cert-bandeja-head p { margin:0; font-size:13px; color:var(--sigta-texto-suave); }
+.cert-count,.cert-status { display:inline-block; white-space:nowrap; background:#fff6d8; color:#795a00; border-radius:20px; padding:8px 12px; font-size:12px; font-weight:700; }
+.cert-search { display:block; font-size:13px; font-weight:700; color:var(--sigta-azul); margin-bottom:24px; }
+.cert-search input { display:block; width:100%; box-sizing:border-box; margin-top:8px; padding:16px; font:inherit; font-weight:400; border:1px solid var(--sigta-borde); border-radius:9px; background:#f8fafd; }
+.cert-search input:focus { outline:2px solid var(--sigta-azul); outline-offset:2px; }
+.cert-table-wrap { overflow:auto; }.cert-table { width:100%; border-collapse:collapse; font-size:13px; text-align:left; }
+.cert-table th { background:#f3f6fb; color:var(--sigta-texto-suave); padding:14px; font-size:11px; text-transform:uppercase; letter-spacing:.4px; }
+.cert-table td { padding:18px 14px; border-bottom:1px solid #e8eef5; }.cert-table tbody tr:hover { background:#fafcff; }.cert-table small { display:block; margin-top:5px; color:var(--sigta-texto-suave); }
+.cert-table strong { color:var(--sigta-azul); white-space:nowrap; }.cert-table button { white-space:nowrap; font-size:12px; }.cert-monto { white-space:nowrap; }.cert-empty { padding:32px!important; text-align:center; color:var(--sigta-texto-suave); }.cert-error { color:#a22b24; }
+.cert-pasos { display:flex; gap:12px; list-style:none; padding:0; margin:20px 0; }.cert-pasos li { flex:1; display:flex; align-items:center; gap:10px; padding:12px; border:1px solid #dae4ef; border-radius:8px; background:#f5f8fc; font-size:12px; }.cert-pasos b { display:grid; place-items:center; width:26px; height:26px; flex-shrink:0; border-radius:50%; background:var(--sigta-azul); color:white; }
+.workflow-card { flex:none; }.cert-scroll-body { overflow:visible; flex:none; }.compact-header { border:1px solid var(--sigta-borde); border-radius:10px; }.compact-meta { flex-wrap:wrap; }.doc-links { flex-wrap:wrap; }
+.workflow-card .wf-header { background:var(--sigta-azul); color:white; }
+button.search-item { display:block; width:100%; border:0; background:white; text-align:left; font:inherit; cursor:pointer; }
+button.search-item:hover,button.search-item:focus-visible { background:var(--sigta-azul-tenue); }
+@media(max-width:760px) { .cert-bandeja { padding:16px; }.cert-bandeja-head { align-items:flex-start; }.cert-pasos { flex-direction:column; }.cert-scroll-body { padding:14px; }.evidence-box { flex-direction:column; align-items:flex-start; }.barra-perfil { flex-wrap:wrap; } }
 </style>

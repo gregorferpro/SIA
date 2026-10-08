@@ -404,6 +404,7 @@
              RESUMEN
         ================================================== -->
 
+        <DocumentosExpediente v-if="ticketSeleccionado" base="/api/soporte/tickets" :id="ticketSeleccionado.id" />
         <section class="status-grid">
 
           <article>
@@ -1538,6 +1539,7 @@
 
 
 <script setup>
+import DocumentosExpediente from '../components/DocumentosExpediente.vue'
 import UsuarioHeader from '../components/UsuarioHeader.vue'
 
 import {

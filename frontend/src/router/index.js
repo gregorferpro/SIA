@@ -442,7 +442,7 @@ const router = createRouter({
     {
       path: '/especialista/notificaciones',
       name: 'especialista-notificaciones',
-      component: NotificacionesView,
+      redirect: { path: '/especialista/dashboard', query: { vista: 'notificaciones' } },
       meta: {
         requiereAuth: true,
         roles: ['ESPECIALISTA', 'AGENTE'],

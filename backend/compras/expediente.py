@@ -15,6 +15,8 @@ def completar_expediente_origen(request, origen, campo_origen):
         return Response({"detalle": "El expediente no admite completar documentación en esta etapa."}, status=409)
     if not documentos_faltantes(solicitud):
         return Response({"detalle": "El expediente ya tiene todos los documentos."}, status=409)
+    from .informes_origen import asegurar_informe_tecnico
+    asegurar_informe_tecnico(origen)
     for campo in ("informe", "proforma", "poa", "pedido"):
         archivo = request.FILES.get(campo) or getattr(solicitud, campo)
         if not archivo and campo in ("informe", "proforma"):

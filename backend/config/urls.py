@@ -109,12 +109,5 @@ urlpatterns = [
 # por un servidor web o almacenamiento dedicado.
 # ==========================================================
 
-if settings.DEBUG:
-
-    urlpatterns += static(
-
-        settings.MEDIA_URL,
-
-        document_root=
-            settings.MEDIA_ROOT
-    )
+from usuarios.archivos import archivo_expediente
+urlpatterns += [path('media/<path:ruta>', archivo_expediente, name='archivo-expediente')]

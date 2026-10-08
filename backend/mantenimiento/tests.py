@@ -59,6 +59,27 @@ class FlujoMantenimientoTests(APITestCase):
         self.assertEqual(r.status_code, 201, r.data)
         return r.data["requerimiento"]["id"]
 
+    def test_director_visualiza_informes_anteriores_sin_modificarlos(self):
+        from .models import EstadoMantenimiento
+        pk = self.registrar()
+        RequerimientoMantenimiento.objects.filter(pk=pk).update(
+            estado=EstadoMantenimiento.objects.get(codigo='FINALIZADO'),
+            informe_trabajo='Trabajo del tecnico registrado', informe_final='Informe final registrado',
+        )
+        self.autenticar('DIRECTOR')
+        for tipo in ('tecnico', 'final'):
+            r = self.client.get(f'/api/mantenimiento/requerimientos/{pk}/informes-pdf/{tipo}/')
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(r['Content-Type'], 'application/pdf')
+            self.assertTrue(r.content.startswith(b'%PDF'))
+        from usuarios.models import DocumentoProceso
+        self.assertFalse(DocumentoProceso.objects.filter(mantenimiento_id=pk).exists())
+        otro = Usuario.objects.create_user(username='otro-solicitante', email='otro@example.invalid', nombre_completo='Otro solicitante')
+        UsuarioRol.objects.create(usuario=otro, rol=Rol.objects.get(codigo='SOLICITANTE'))
+        self.client.force_authenticate(otro)
+        r = self.client.get(f'/api/mantenimiento/requerimientos/{pk}/informes-pdf/final/')
+        self.assertEqual(r.status_code, 404)
+
     def test_ticket_invalido_no_procede(self):
         pk = self.registrar("Solicitud incompleta")
 
@@ -104,6 +125,11 @@ class FlujoMantenimientoTests(APITestCase):
             format="json",
         )
         self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['requerimiento']['sla_horas'], 8)
+        from datetime import datetime, timedelta
+        clasificado = datetime.fromisoformat(r.data['requerimiento']['clasificado_en'].replace('Z', '+00:00'))
+        limite = datetime.fromisoformat(r.data['requerimiento']['sla_fecha_limite'].replace('Z', '+00:00'))
+        self.assertEqual(limite - clasificado, timedelta(hours=8))
 
         r = self.client.post(
             f"/api/mantenimiento/requerimientos/{pk}/designar-revision/",
@@ -142,17 +168,23 @@ class FlujoMantenimientoTests(APITestCase):
         )
         self.assertEqual(r.data["requerimiento"]["estado_codigo"], "INFORME_REGISTRADO", r.data)
 
-        # Jefatura: verificación con ciclo de retorno.
         self.autenticar("SERVICIOS_GENERALES")
+        r = self.client.post(f"/api/mantenimiento/requerimientos/{pk}/elaborar-informe-final/", {"informe_final": "Cierre prematuro"}, format="json")
+        self.assertEqual(r.status_code, 409, r.data)
+
+        # Solicitante: verificación con ciclo de retorno.
+        self.autenticar("SOLICITANTE")
         r = self.client.post(
             f"/api/mantenimiento/requerimientos/{pk}/verificar-funcionamiento/",
-            {"problema_resuelto": False},
+            {"problema_resuelto": False, "observaciones": "La falla continúa"},
             format="json",
         )
         self.assertEqual(r.data["requerimiento"]["estado_codigo"], "EN_MANTENIMIENTO", r.data)
         self.assertEqual(r.data["requerimiento"]["rework_count"], 1)
 
         self.autenticar("AUXILIAR_SERVICIOS_GENERALES")
+        r = self.client.post(f"/api/mantenimiento/requerimientos/{pk}/realizar-mantenimiento/", {"trabajo_realizado": "Corrección de la falla persistente."}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
         self.client.post(
             f"/api/mantenimiento/requerimientos/{pk}/pruebas-tecnicas/",
             {"resultado_pruebas": "Segunda prueba conforme."}, format="json",
@@ -168,10 +200,23 @@ class FlujoMantenimientoTests(APITestCase):
             {"problema_resuelto": True},
             format="json",
         )
-        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.status_code, 403, r.data)
 
-        r = self.client.post(f"/api/mantenimiento/requerimientos/{pk}/informar-conformidad/", {}, format="json")
+        self.autenticar("SOLICITANTE")
+        r = self.client.post(f"/api/mantenimiento/requerimientos/{pk}/verificar-funcionamiento/", {"problema_resuelto": True, "firma": [[[10, 10], [50, 40], [90, 20]]]}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data["requerimiento"]["estado_codigo"], "CONFORMIDAD_INFORMADA", r.data)
+        self.assertTrue(r.data["requerimiento"]["conformidad_solicitante"])
+        self.autenticar("SERVICIOS_GENERALES")
+        r = self.client.post(f"/api/mantenimiento/requerimientos/{pk}/informar-conformidad/", {}, format="json")
+        self.assertEqual(r.status_code, 403, r.data)
+
+        # La respuesta ya registrada de un expediente anterior tambien
+        # habilita el informe, sin pedir al jefe que confirme conformidad.
+        from .models import EstadoMantenimiento
+        RequerimientoMantenimiento.objects.filter(pk=pk).update(
+            estado=EstadoMantenimiento.objects.get(codigo="INFORME_REGISTRADO")
+        )
 
         r = self.client.post(
             f"/api/mantenimiento/requerimientos/{pk}/elaborar-informe-final/",
@@ -228,6 +273,17 @@ class FlujoMantenimientoTests(APITestCase):
         self.assertIn(r.status_code, (400, 409), r.data)
 
         self.autenticar("SERVICIOS_GENERALES")
+        jefe = self.usuarios["SERVICIOS_GENERALES"]
+        jefe.must_change_password = False
+        jefe.save(update_fields=["must_change_password"])
+        detalle = self.client.get(f"/api/mantenimiento/requerimientos/{pk}/")
+        self.assertEqual(detalle.status_code, 200, detalle.data)
+        proforma = self.client.get(detalle.data["cotizacion_archivo"])
+        self.assertEqual(proforma.status_code, 200, getattr(proforma, "data", None))
+        try:
+            self.assertEqual(b"".join(proforma.streaming_content), b"cotizacion")
+        finally:
+            proforma.close()
         r = self.client.post(
             f"/api/mantenimiento/requerimientos/{pk}/evaluar-viabilidad-compra/",
             {"viable": False, "motivo_no_viable": "Excede el presupuesto disponible."},
@@ -276,6 +332,22 @@ class FlujoMantenimientoTests(APITestCase):
         )
 
         self.autenticar("SERVICIOS_GENERALES")
+        RequerimientoMantenimiento.objects.filter(pk=pk).update(informe_compra="")
+        r = self.client.get(url + "/informe-requerimiento-pdf/")
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(b"".join(r.streaming_content).startswith(b"%PDF-"))
+        self.assertTrue(RequerimientoMantenimiento.objects.get(pk=pk).informe_compra)
+        r = self.client.post(url + "/validar-viabilidad-compra/", {}, format="json")
+        self.assertEqual(r.status_code, 200, r.data)
+        validado = RequerimientoMantenimiento.objects.get(pk=pk)
+        self.assertEqual(validado.estado_compra_componente, "VIABLE")
+        self.assertFalse(validado.derivado_compra)
+        self.assertFalse(SolicitudCompra.objects.filter(requerimiento_mantenimiento_id=pk).exists())
+        r = self.client.get(url + "/")
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data["estado_compra_componente"], "VIABLE")
+        r = self.client.post(url + "/validar-viabilidad-compra/", {}, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
         r = self.client.post(url + "/evaluar-viabilidad-compra/", {"viable": True}, format="json")
         self.assertEqual(r.status_code, 400, r.data)
         self.assertFalse(SolicitudCompra.objects.filter(requerimiento_mantenimiento_id=pk).exists())
@@ -299,6 +371,10 @@ class FlujoMantenimientoTests(APITestCase):
         self.assertEqual(solicitud.proforma.read(), b"cotizacion")
         self.assertTrue(solicitud.poa)
         self.assertTrue(solicitud.pedido)
+
+        r = self.client.post(url + "/evaluar-viabilidad-compra/", {"viable": True}, format="json")
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(SolicitudCompra.objects.filter(requerimiento_mantenimiento_id=pk).count(), 1)
 
         requerimiento = RequerimientoMantenimiento.objects.get(pk=pk)
         self.assertEqual(requerimiento.estado_compra_componente, "VIABLE")

@@ -1,3 +1,4 @@
+from usuarios.archivos import firmar_urls
 from urllib.parse import urlsplit
 
 from rest_framework import serializers
@@ -33,6 +34,13 @@ CAMPOS_ARCHIVO = (
 
 
 class SolicitudCompraSerializer(serializers.ModelSerializer):
+    receptor_acta = serializers.SerializerMethodField()
+
+    def get_receptor_acta(self, obj):
+        from .actas_almacen import receptor_acta
+        receptor = receptor_acta(obj)
+        return {'id': receptor.pk, 'nombre': receptor.nombre_completo, 'tecnico': bool(obj.requerimiento_mantenimiento_id or obj.ticket_soporte_id)} if receptor else None
+
     monto_estimado = MontoEstimadoField(max_digits=12, decimal_places=2, min_value=0, required=False, allow_null=True)
 
     # El expediente dice por sí mismo de quién depende ahora: evita que
@@ -82,7 +90,7 @@ class SolicitudCompraSerializer(serializers.ModelSerializer):
             "descripcion",
 
             "solicitante",
-            "solicitante_nombre",
+            "solicitante_nombre", "receptor_acta",
             "solicitante_email",
 
             "area",
@@ -209,6 +217,9 @@ class SolicitudCompraSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
 
         data = super().to_representation(instance)
+        # Metadato solicitado únicamente por la bandeja de Tesorería.
+        if hasattr(instance, 'tesoreria_fecha'):
+            data['tesoreria_fecha'] = instance.tesoreria_fecha.isoformat() if instance.tesoreria_fecha else None
 
         for campo in CAMPOS_ARCHIVO:
 
@@ -217,7 +228,7 @@ class SolicitudCompraSerializer(serializers.ModelSerializer):
             if valor:
                 data[campo] = urlsplit(valor).path
 
-        return data
+        return firmar_urls(data, self.context.get('request'))
 
     def create(self, validated_data):
 
@@ -284,7 +295,7 @@ class SolicitudCompraResumenSerializer(serializers.ModelSerializer):
         for campo in ("informe", "proforma", "poa", "pedido"):
             if data.get(campo):
                 data[campo] = urlsplit(data[campo]).path
-        return data
+        return firmar_urls(data, self.context.get('request'))
 
     class Meta:
         model = SolicitudCompra

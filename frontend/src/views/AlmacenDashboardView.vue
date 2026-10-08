@@ -1,12 +1,12 @@
 <template>
-  <div class="layout sigta-role-layout">
+  <div class="layout sigta-role-layout almacen-vista">
     <aside :class="{ abierto: menuAbierto }">
       <div class="brand-row">
         <div class="brand"><b><img src="/img/emi.jpg" alt="EMI"></b><div><strong>SIA</strong><small>Almacén y Compras</small></div></div>
         <button type="button" class="menu-toggle" :aria-expanded="menuAbierto" aria-label="Mostrar opciones del menú" @click="menuAbierto = !menuAbierto"><span></span><span></span><span></span></button>
       </div>
       <p>CAJA CHICA</p>
-      <button v-for="m in menu" :key="m.id" :class="{active:vista===m.id}" @click="irA(m.id)"><span class="icon-badge" :style="{background:m.color+'26',color:m.color}"><IconoSigta :nombre="m.icono" :tamano="16" /></span>{{ m.nombre }}<em v-if="m.total!==undefined">{{ m.total }}</em></button>
+      <button v-for="m in menu" :key="m.id" class="alm-menu-item" :class="{active:vista===m.id}" @click="irA(m.id)"><span class="icon-badge" :style="{'--alm-icon':m.color,'--alm-icon-bg':m.color+'26'}"><IconoSigta :nombre="m.icono" :tamano="16" /></span><span class="alm-menu-label">{{ m.nombre }}</span><em v-if="m.total!==undefined">{{ m.total }}</em></button>
       <div class="bottom"><button class="logout" @click="mostrarLogout = true"><IconoSigta nombre="salir" :tamano="17" />Cerrar sesión</button></div>
     </aside>
 
@@ -21,348 +21,47 @@
         <UsuarioHeader @actualizar="cargar" />
       </header>
 
-      <!-- ============================ RESUMEN ============================ -->
-      <section v-if="vista==='resumen'">
-        <div class="hero">
-          <div><small>COMPRAS Y ALMACÉN</small><h2>{{ saludo }}, {{ primerNombre }}</h2><p>Adquisición, control de almacén y entrega de los bienes.</p></div>
-          <span>CA</span>
-        </div>
-
-        <div class="stats">
+<p v-if="errorCarga" class="alm-error" role="alert">{{ errorCarga }}</p>
+<section v-if="vista==='resumen'">        <div class="stats">
           <article @click="irA('comprar')"><i class="gold"><IconoSigta nombre="compras" :tamano="19" /></i><div><small>Por comprar</small><b>{{ porComprar.length }}</b><p>fondos desembolsados</p></div></article>
           <article @click="irA('entrada')"><i class="blue"><IconoSigta nombre="almacen" :tamano="19" /></i><div><small>Por registrar entrada</small><b>{{ porIngresar.length }}</b><p>producto adquirido</p></div></article>
           <article @click="irA('salida')"><i class="blue"><IconoSigta nombre="salir" :tamano="19" /></i><div><small>Por registrar salida</small><b>{{ porDespachar.length }}</b><p>en almacén</p></div></article>
           <article @click="irA('entrega')"><i class="green"><IconoSigta nombre="conformidad" :tamano="19" /></i><div><small>Por entregar</small><b>{{ porEntregar.length }}</b><p>con acta de conformidad</p></div></article>
         </div>
 
-        <div class="panels">
-          <section class="panel">
-            <div class="panel-head"><div><h3>Sus cuatro tareas del proceso</h3></div></div>
-            <button class="flow" @click="irA('comprar')"><i class="gold">1</i><div><b>Realizar compra</b><small>Adquirir el bien y respaldarlo con la factura o recibo</small></div><strong>›</strong></button>
-            <button class="flow" @click="irA('entrada')"><i class="blue">2</i><div><b>Registrar entrada de almacén</b><small>Cuántas unidades llegaron y quién las recibió</small></div><strong>›</strong></button>
-            <button class="flow" @click="irA('salida')"><i class="blue">3</i><div><b>Registrar salida de almacén</b><small>Qué sale, cuándo y para quién</small></div><strong>›</strong></button>
-            <button class="flow" @click="irA('entrega')"><i class="green">4</i><div><b>Entregar la solicitud con acta de conformidad</b><small>Entrega formal al área solicitante</small></div><strong>›</strong></button>
-          </section>
-          <section class="panel">
-            <div class="panel-head"><div><small>SU FUNCIÓN</small><h3>Ejecutar y controlar</h3></div></div>
-            <p class="copy">Usted no autoriza la compra ni desembolsa el dinero: eso corresponde al Director y a Tesorería. Su trabajo empieza cuando ya hay autorización y fondos, y consiste en que el bien pase correctamente por <b>adquisición → control en almacén → entrega</b>.</p>
-            <button class="wide primary" @click="irA('historial')">Ver historial de movimientos →</button>
-          </section>
-        </div>
-      </section>
+</section>
+<AlmacenTabla v-if="vista==='resumen'" :mostrar-buscador="false" etapa="comprar" titulo="Compras pendientes de realizar" :registros="porComprar" :cargando="cargando" @registrar="abrirCompraDashboard" />
+<AlmacenTabla v-else-if="esGestionAlmacen" :key="vista" :etapa="vista" :titulo="configuracionGestion.bandeja" :registros="bandejaActual" :cargando="cargando" @registrar="abrir" @detalle="verDetalle" />
+<AlmacenTabla v-else-if="vista==='historial'" etapa="historial" titulo="Historial de movimientos" :registros="historial" :cargando="cargando" @detalle="verDetalle" />
+</main>
+<ModalSia v-if="activo" :titulo="`${configuracionGestion.etiqueta} · ${activo.codigo}`" amplio :ocupado="procesando" @cerrar="cerrar">            <div class="ticket-header-card"><div class="t-head"><h2>{{ activo.codigo }}</h2><span class="codigo-badge">{{ configuracionGestion.etiqueta }}</span></div><p>{{ activo.titulo }}</p><div class="t-meta"><span><b>Solicitante:</b> {{ activo.solicitante_nombre || 's/d' }}</span><span><b>Cantidad:</b> {{ activo.cantidad }} unid.</span></div></div>
 
-      <!-- Las cuatro tareas comparten la misma bandeja y flujo secuencial. -->
-      <section v-if="esGestionAlmacen" class="gestion-tickets-layout">
-        <div class="gestion-left">
-          <div class="gestion-left-header"><h3>{{ configuracionGestion.bandeja }}</h3><span class="badge">{{ bandejaActual.length }} requiere acción</span></div>
-          <div class="gestion-lista">
-            <div v-if="!bandejaActual.length" class="empty-list">Bandeja al día. No hay expedientes pendientes.</div>
-            <article v-for="e in bandejaActual" :key="e.id" :class="['ticket-item', { activo: activo?.id === e.id }]" @click="abrir(e)">
-              <div class="t-head"><h4>{{ e.codigo }}</h4><span class="step-badge">{{ configuracionGestion.estado }}</span></div>
-              <p><strong>{{ e.titulo }}</strong></p><p>{{ e.solicitante_nombre || 'Solicitante no indicado' }}</p><p class="item-meta">{{ resumenExpediente(e) }}</p>
-            </article>
-          </div>
-        </div>
-        <section class="gestion-right">
-          <div v-if="!activo" class="ticket-header-card selector-vacio"><span>←</span><h3>Seleccione un expediente</h3><p>Elija un elemento de la bandeja para ejecutar el flujo paso a paso.</p></div>
-          <div v-else class="gestion-detalle-wrapper">
-            <div class="ticket-header-card"><div class="t-head"><h2>{{ activo.codigo }}</h2><span class="codigo-badge">{{ configuracionGestion.etiqueta }}</span></div><p>{{ activo.titulo }}</p><div class="t-meta"><span><b>Solicitante:</b> {{ activo.solicitante_nombre || 's/d' }}</span><span><b>Cantidad:</b> {{ activo.cantidad }} unid.</span></div></div>
-            <div class="workflow-card"><div class="wf-header">Flujo de {{ configuracionGestion.etiqueta }}</div><div class="wf-body">
-              <div class="wf-step" :class="{ active: pasoActual===1, completed: pasoActual>1 }"><div class="step-num">1</div><div class="step-content"><h4>{{ configuracionGestion.paso1 }}</h4><p>{{ configuracionGestion.ayuda1 }}</p><div v-if="pasoActual===1" class="step-form"><p class="copy">{{ contextoPaso1 }}</p><div class="step-actions"><button class="reject" @click="cerrar">Cancelar</button><button class="flex-btn primary" @click="completarPasoUno">{{ textoPasoUno }}</button></div></div></div></div>
-              <div class="wf-step" :class="{ active: pasoActual===2, completed: pasoActual>2, locked: pasoActual<2 }"><div class="step-num">2</div><div class="step-content"><h4>{{ configuracionGestion.paso2 }}</h4><p>{{ configuracionGestion.ayuda2 }}</p><div v-if="pasoActual===2" class="step-form">
-                <template v-if="vista==='comprar'"><label class="campo">Monto real cobrado (Bs)<input v-model="formCompra.monto_real" type="number" min="0" step="0.01" placeholder="0.00"></label><label class="campo">Proveedor<input v-model="formCompra.proveedor" placeholder="Nombre o razón social"></label><label class="campo">Factura o recibo<input type="file" accept="application/pdf,image/*" @change="onComprobante"></label><label class="campo">Verificación del producto<input v-model="formCompra.observacion_verificacion" placeholder="El producto corresponde a lo solicitado..."></label></template>
+            <div class="workflow-card"><div class="wf-header">{{ configuracionGestion.etiqueta }}</div><div class="wf-body">
+              <div v-if="pasoActual===1" class="wf-step active"><div class="step-num">1</div><div class="step-content"><h4>{{ configuracionGestion.paso1 }}</h4><p>{{ configuracionGestion.ayuda1 }}</p><div v-if="pasoActual===1" class="step-form"><p class="copy">{{ contextoPaso1 }}</p><div class="step-actions"><button class="reject" @click="cerrar">Cancelar</button><button class="flex-btn primary" :disabled="procesando" @click="completarPasoUno">{{ textoPasoUno }}</button></div></div></div></div>
+              <div v-if="pasoActual===2" class="wf-step active"><div class="step-num">2</div><div class="step-content"><h4>{{ configuracionGestion.paso2 }}</h4><p>{{ configuracionGestion.ayuda2 }}</p><div v-if="pasoActual===2" class="step-form">
+                <template v-if="vista==='comprar'"><label class="campo">Monto real cobrado (Bs)<input v-model="formCompra.monto_real" type="number" min="0" step="0.01" placeholder="0.00"></label><label class="campo">Proveedor<input v-model="formCompra.proveedor" placeholder="Nombre o razón social"></label><div class="campo">Factura o recibo<EvidenciaFactura v-model="comprobante" /></div><label class="campo">Verificación del producto<input v-model="formCompra.observacion_verificacion" placeholder="El producto corresponde a lo solicitado..."></label></template>
                 <template v-else-if="vista==='entrada'"><label class="campo">Cantidad recibida<input v-model="formIngreso.cantidad_recibida" type="number" min="1" :max="activo.cantidad" :placeholder="`Máximo ${activo.cantidad}`"></label><label class="campo">Recibido por<input v-model="formIngreso.responsable_recepcion" placeholder="Nombre de quien recibe en almacén"></label><label class="campo">Observación del ingreso<input v-model="formIngreso.observacion_ingreso" placeholder="Estado del producto, embalaje..."></label></template>
-                <template v-else-if="vista==='salida'"><label class="campo">Cantidad que sale<input v-model="formSalida.cantidad_entregada" type="number" min="1" :max="activo.cantidad_recibida" :placeholder="`Máximo ${activo.cantidad_recibida}`"></label><label class="campo">Entregado a<input v-model="formSalida.entregado_a" placeholder="Nombre de quien retira el producto"></label><label class="campo">Observación de la salida<input v-model="formSalida.observacion_salida" placeholder="Detalle adicional..."></label></template>
-                <template v-else><label class="campo">Acta de conformidad<input type="file" accept="application/pdf,image/*" @change="onActa"></label></template>
+                <template v-else-if="vista==='salida'"><label class="campo">Cantidad que sale<input v-model="formSalida.cantidad_entregada" type="number" min="1" :max="activo.cantidad_recibida" :placeholder="`Máximo ${activo.cantidad_recibida}`"></label><label class="campo">Entregado a<input v-model="formSalida.entregado_a" :readonly="!!activo.receptor_acta?.tecnico" placeholder="Nombre de quien retira el producto"></label><label class="campo">Observación de la salida<input v-model="formSalida.observacion_salida" placeholder="Detalle adicional..."></label></template>
+                <ActaEntregaAlmacen v-else :solicitud="activo" :ocupado="procesando" v-model="acta" v-model:acta-id="actaId" v-model:listo="actaLista" @ver="verArchivo" />
                 <div class="step-actions"><button class="reject" @click="pasoActual=1">Retroceder</button><button class="flex-btn primary" :disabled="!pasoDosValido" @click="pasoActual=3">Continuar</button></div>
               </div></div></div>
-              <div class="wf-step" :class="{ active: pasoActual===3, locked: pasoActual<3 }"><div class="step-num">3</div><div class="step-content"><h4>Confirmar registro</h4><p>Revise la información. Al confirmar, el expediente avanzará al siguiente proceso.</p><div v-if="pasoActual===3" class="step-form"><div class="step-actions"><button class="reject" @click="pasoActual=2">Retroceder</button><button class="flex-btn primary" :disabled="procesando" @click="registrarGestion">{{ configuracionGestion.accion }}</button></div></div></div></div>
+              <div v-if="pasoActual===3" class="wf-step active"><div class="step-num">3</div><div class="step-content"><h4>Confirmar registro</h4><p class="alm-confirmacion">{{ resumenRegistro }}</p><p>Revise la información. Al confirmar, el expediente avanzará al siguiente proceso.</p><div v-if="pasoActual===3" class="step-form"><div class="step-actions"><button class="reject" @click="pasoActual=2">Retroceder</button><button class="flex-btn primary" :disabled="procesando" @click="registrarGestion">{{ configuracionGestion.accion }}</button></div></div></div></div>
             </div></div>
-          </div>
-        </section>
-      </section>
-
-      <!-- ========================= 1. REALIZAR COMPRA ========================= -->
-      <section v-else-if="vista==='comprar'">
-        <div class="instruction"><b>Realizar compra</b><span>Adquiera el bien y registre el monto real, el proveedor y la factura que respalda la compra.</span></div>
-
-        <div v-if="cargando" class="empty">Consultando expedientes…</div>
-
-        <div v-else-if="!activo" class="cards">
-          <article v-for="e in porComprar" :key="e.id">
-            <div class="top"><span>{{ e.codigo }}</span><em>fondos entregados</em></div>
-            <h3>{{ e.titulo }}</h3>
-            <ul class="datos">
-              <li><b>Cantidad</b><span>{{ e.cantidad }}</span></li>
-              <li><b>Desembolsado</b><span>Bs {{ e.monto_desembolsado || 's/d' }}</span></li>
-              <li><b>Entregó Tesorería a</b><span>{{ e.responsable_adquisicion || 's/d' }}</span></li>
-            </ul>
-
-            <p class="situacion" :class="{ aviso: !e.fondos_recibidos_en }">
-              {{ e.situacion }}
-            </p>
-
-            <div class="actions">
-              <button @click="verDetalle(e)">Ver expediente</button>
-              <button
-                v-if="!e.fondos_recibidos_en"
-                class="primary"
-                @click="confirmarFondos(e)"
-              >
-                Recibí el efectivo
-              </button>
-              <template v-else>
-                <button @click="abrirGestion(e)">Informar avance</button>
-                <button class="primary" @click="abrir(e)">Registrar compra</button>
-              </template>
-            </div>
-          </article>
-          <div v-if="!porComprar.length" class="empty">
-            <span>✓</span><h3>Sin compras pendientes</h3>
-            <p>Los expedientes llegan aquí cuando Tesorería desembolsa los fondos.</p>
-          </div>
-        </div>
-
-        <div v-else-if="modoGestion" class="panel hoja">
-          <div class="hoja-head">
-            <div><small>INFORMAR AVANCE</small><h3>{{ activo.codigo }} — {{ activo.titulo }}</h3></div>
-            <button class="refresh" @click="cerrar">Volver</button>
-          </div>
-
-          <p class="copy">Deje constancia de en qué punto va la gestión. El resto de las áreas verá este avance en el expediente, sin tener que preguntar.</p>
-
-          <label class="campo">¿En qué está?
-            <select v-model="formGestion.gestion_estado">
-              <option value="BUSCANDO">Buscando producto o proveedor</option>
-              <option value="COMPRANDO">Compra en curso</option>
-            </select>
-          </label>
-          <label class="campo">Detalle
-            <input v-model="formGestion.gestion_nota" type="text" placeholder="Ej.: cotizando en tres proveedores">
-          </label>
-
-          <div class="actions">
-            <button @click="cerrar">Cancelar</button>
-            <button class="primary" :disabled="procesando" @click="informarAvance">Guardar avance</button>
-          </div>
-        </div>
-
-        <div v-else class="panel hoja">
-          <div class="hoja-head">
-            <div><small>REALIZAR COMPRA</small><h3>{{ activo.codigo }} — {{ activo.titulo }}</h3></div>
-            <button class="refresh" @click="cerrar">Volver</button>
-          </div>
-          <p class="copy"><b>Solicitado:</b> {{ activo.cantidad }} unidad(es) · {{ activo.especificaciones || 's/d' }}<br><b>Monto desembolsado:</b> Bs {{ activo.monto_desembolsado || 's/d' }}<br><b>Efectivo recibido por:</b> {{ activo.fondos_recibidos_por }} el {{ fecha(activo.fondos_recibidos_en) }}</p>
-
-          <label class="campo">Monto real cobrado (Bs)
-            <input v-model="formCompra.monto_real" type="number" min="0" step="0.01" placeholder="0.00">
-          </label>
-          <label class="campo">Proveedor
-            <input v-model="formCompra.proveedor" type="text" placeholder="Nombre o razón social">
-          </label>
-          <label class="campo">Factura o recibo de la compra
-            <input type="file" accept="application/pdf,image/*" @change="onComprobante">
-          </label>
-          <label class="campo">Verificación del producto
-            <input v-model="formCompra.observacion_verificacion" type="text" placeholder="El producto corresponde a lo solicitado...">
-          </label>
-
-          <div class="actions">
-            <button @click="cerrar">Cancelar</button>
-            <button class="primary" :disabled="procesando||!formCompra.monto_real||!formCompra.proveedor.trim()||!comprobante" @click="registrarCompra">Registrar compra</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- ======================= 2. ENTRADA DE ALMACÉN ======================= -->
-      <section v-else-if="vista==='entrada'">
-        <div class="instruction"><b>Registrar entrada de almacén</b><span>Deje constancia de cuántas unidades ingresaron y quién las recibió.</span></div>
-
-        <div v-if="!activo" class="cards">
-          <article v-for="e in porIngresar" :key="e.id">
-            <div class="top"><span>{{ e.codigo }}</span><em>comprado</em></div>
-            <h3>{{ e.titulo }}</h3>
-            <ul class="datos">
-              <li><b>Solicitadas</b><span>{{ e.cantidad }}</span></li>
-              <li><b>Proveedor</b><span>{{ e.proveedor || 's/d' }}</span></li>
-              <li><b>Monto real</b><span>Bs {{ e.monto_real || 's/d' }}</span></li>
-            </ul>
-            <div class="actions">
-              <button @click="verDetalle(e)">Ver expediente</button>
-              <button class="primary" @click="abrir(e)">Registrar entrada</button>
-            </div>
-          </article>
-          <div v-if="!porIngresar.length" class="empty"><span>✓</span><h3>Sin ingresos pendientes</h3><p>Aquí aparecen los productos ya comprados.</p></div>
-        </div>
-
-        <div v-else class="panel hoja">
-          <div class="hoja-head">
-            <div><small>ENTRADA DE ALMACÉN</small><h3>{{ activo.codigo }} — {{ activo.titulo }}</h3></div>
-            <button class="refresh" @click="cerrar">Volver</button>
-          </div>
-          <p class="copy"><b>Solicitadas:</b> {{ activo.cantidad }} unidad(es) · <b>Proveedor:</b> {{ activo.proveedor }}</p>
-
-          <label class="campo">Cantidad recibida
-            <input v-model="formIngreso.cantidad_recibida" type="number" min="1" :max="activo.cantidad" :placeholder="`Máximo ${activo.cantidad}`">
-          </label>
-          <label class="campo">Recibido por
-            <input v-model="formIngreso.responsable_recepcion" type="text" placeholder="Nombre de quien recibe en almacén">
-          </label>
-          <label class="campo">Observación del ingreso
-            <input v-model="formIngreso.observacion_ingreso" type="text" placeholder="Estado del producto, embalaje...">
-          </label>
-
-          <div class="actions">
-            <button @click="cerrar">Cancelar</button>
-            <button class="primary" :disabled="procesando||!formIngreso.cantidad_recibida||!formIngreso.responsable_recepcion.trim()" @click="registrarEntrada">Registrar entrada</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- ======================== 3. SALIDA DE ALMACÉN ======================== -->
-      <section v-else-if="vista==='salida'">
-        <div class="instruction"><b>Registrar salida de almacén</b><span>Registre qué cantidad sale del almacén y a quién se entrega.</span></div>
-
-        <div v-if="!activo" class="cards">
-          <article v-for="e in porDespachar" :key="e.id">
-            <div class="top"><span>{{ e.codigo }}</span><em>en almacén</em></div>
-            <h3>{{ e.titulo }}</h3>
-            <ul class="datos">
-              <li><b>En almacén</b><span>{{ e.cantidad_recibida }} unid.</span></li>
-              <li><b>Recibió</b><span>{{ e.responsable_recepcion || 's/d' }}</span></li>
-              <li><b>Ingresó</b><span>{{ fecha(e.fecha_ingreso_almacen) }}</span></li>
-            </ul>
-            <div class="actions">
-              <button @click="verDetalle(e)">Ver expediente</button>
-              <button class="primary" @click="abrir(e)">Registrar salida</button>
-            </div>
-          </article>
-          <div v-if="!porDespachar.length" class="empty"><span>✓</span><h3>Sin salidas pendientes</h3><p>Aquí aparecen los productos que ya ingresaron a almacén.</p></div>
-        </div>
-
-        <div v-else class="panel hoja">
-          <div class="hoja-head">
-            <div><small>SALIDA DE ALMACÉN</small><h3>{{ activo.codigo }} — {{ activo.titulo }}</h3></div>
-            <button class="refresh" @click="cerrar">Volver</button>
-          </div>
-          <p class="copy"><b>Disponible en almacén:</b> {{ activo.cantidad_recibida }} unidad(es), recibidas por {{ activo.responsable_recepcion }}</p>
-
-          <label class="campo">Cantidad que sale
-            <input v-model="formSalida.cantidad_entregada" type="number" min="1" :max="activo.cantidad_recibida" :placeholder="`Máximo ${activo.cantidad_recibida}`">
-          </label>
-          <label class="campo">Entregado a
-            <input v-model="formSalida.entregado_a" type="text" placeholder="Nombre de quien retira el producto">
-          </label>
-          <label class="campo">Observación de la salida
-            <input v-model="formSalida.observacion_salida" type="text" placeholder="Detalle adicional...">
-          </label>
-
-          <div class="actions">
-            <button @click="cerrar">Cancelar</button>
-            <button class="primary" :disabled="procesando||!formSalida.cantidad_entregada||!formSalida.entregado_a.trim()" @click="registrarSalida">Registrar salida</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===================== 4. ENTREGA CON ACTA ===================== -->
-      <section v-else-if="vista==='entrega'">
-        <div class="instruction"><b>Entregar la solicitud con acta de conformidad</b><span>Entregue el bien al área solicitante adjuntando el acta que respalda la entrega.</span></div>
-
-        <div v-if="!activo" class="cards">
-          <article v-for="e in porEntregar" :key="e.id">
-            <div class="top"><span>{{ e.codigo }}</span><em>salida registrada</em></div>
-            <h3>{{ e.titulo }}</h3>
-            <ul class="datos">
-              <li><b>Salieron</b><span>{{ e.cantidad_entregada }} unid.</span></li>
-              <li><b>Destino</b><span>{{ e.entregado_a || 's/d' }}</span></li>
-              <li><b>Solicitante</b><span>{{ e.solicitante_nombre || 's/d' }}</span></li>
-            </ul>
-            <div class="actions">
-              <button @click="verDetalle(e)">Ver expediente</button>
-              <button class="primary" @click="abrir(e)">Entregar con acta</button>
-            </div>
-          </article>
-          <div v-if="!porEntregar.length" class="empty"><span>✓</span><h3>Sin entregas pendientes</h3><p>Aquí aparecen los productos cuya salida ya fue registrada.</p></div>
-        </div>
-
-        <div v-else class="panel hoja">
-          <div class="hoja-head">
-            <div><small>ENTREGA CON ACTA</small><h3>{{ activo.codigo }} — {{ activo.titulo }}</h3></div>
-            <button class="refresh" @click="cerrar">Volver</button>
-          </div>
-          <p class="copy"><b>Salieron:</b> {{ activo.cantidad_entregada }} unidad(es) con destino a {{ activo.entregado_a }}<br>Tras la entrega, el solicitante firmará el acta y recibirá formalmente la solicitud.</p>
-
-          <label class="campo">Acta de conformidad
-            <input type="file" accept="application/pdf,image/*" @change="onActa">
-          </label>
-
-          <div class="actions">
-            <button @click="cerrar">Cancelar</button>
-            <button class="primary" :disabled="procesando||!acta" @click="entregarConActa">Entregar con acta de conformidad</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- =========================== HISTORIAL =========================== -->
-      <section v-else-if="vista==='historial'">
-        <div class="instruction"><b>Historial de movimientos</b><span>Expedientes que ya pasaron por almacén.</span></div>
-        <div v-if="historial.length" class="cards">
-          <article v-for="e in historial" :key="e.id">
-            <div class="top"><span>{{ e.codigo }}</span><em>{{ etiquetaEstado(e.estado) }}</em></div>
-            <h3>{{ e.titulo }}</h3>
-            <ul class="datos">
-              <li v-if="e.cantidad_recibida"><b>Entrada</b><span>{{ e.cantidad_recibida }} unid. · {{ fecha(e.fecha_ingreso_almacen) }}</span></li>
-              <li v-if="e.cantidad_entregada"><b>Salida</b><span>{{ e.cantidad_entregada }} unid. · {{ fecha(e.fecha_despacho_almacen) }}</span></li>
-              <li v-if="e.entregado_a"><b>Destino</b><span>{{ e.entregado_a }}</span></li>
-            </ul>
-            <div class="actions"><button @click="verDetalle(e)">Ver expediente</button></div>
-          </article>
-        </div>
-        <div v-else class="empty"><span>✓</span><h3>Sin movimientos</h3><p>Todavía no registró compras ni movimientos de almacén.</p></div>
-      </section>
-    </main>
-
-    <!-- ============================ DETALLE ============================ -->
-    <div v-if="detalle" class="detalle-modal-backdrop" @click.self="detalle=null">
-      <div class="detalle-modal">
-        <div class="detalle-modal-header">
-          <div><h3>{{ detalle.codigo }}</h3><small>{{ detalle.titulo }}</small></div>
-          <button class="detalle-modal-close" @click="detalle=null">✕</button>
-        </div>
-        <div class="detalle-modal-body">
-          <div class="detalle-fila">
-            <div class="detalle-campo"><b>Estado</b><span>{{ etiquetaEstado(detalle.estado) }}</span></div>
-            <div class="detalle-campo"><b>Cantidad solicitada</b><span>{{ detalle.cantidad }}</span></div>
-          </div>
-          <div class="detalle-campo"><b>Descripción</b><p>{{ detalle.descripcion }}</p></div>
-          <div class="detalle-campo"><b>Especificaciones</b><p>{{ detalle.especificaciones || 's/d' }}</p></div>
-          <div class="detalle-fila">
-            <div class="detalle-campo"><b>Solicitante</b><span>{{ detalle.solicitante_nombre }}</span></div>
-            <div class="detalle-campo"><b>Área</b><span>{{ detalle.area_nombre || 's/d' }}</span></div>
-          </div>
-          <div class="detalle-campo" v-if="detalle.monto_desembolsado"><b>Desembolso</b><span>Bs {{ detalle.monto_desembolsado }} — recibió {{ detalle.responsable_adquisicion }}</span></div>
-          <div class="detalle-campo" v-if="detalle.monto_real"><b>Compra</b><span>Bs {{ detalle.monto_real }} a {{ detalle.proveedor }}</span></div>
-          <div class="detalle-campo" v-if="detalle.cantidad_recibida"><b>Entrada de almacén</b><span>{{ detalle.cantidad_recibida }} unid. recibidas por {{ detalle.responsable_recepcion }} el {{ fecha(detalle.fecha_ingreso_almacen) }}</span></div>
-          <div class="detalle-campo" v-if="detalle.cantidad_entregada"><b>Salida de almacén</b><span>{{ detalle.cantidad_entregada }} unid. a {{ detalle.entregado_a }} el {{ fecha(detalle.fecha_despacho_almacen) }}</span></div>
-          <div class="detalle-campo"><b>Documentos</b>
-            <p class="documentos">
-              <a v-if="detalle.informe" :href="detalle.informe" target="_blank">Informe</a>
-              <a v-if="detalle.proforma" :href="detalle.proforma" target="_blank">Proforma</a>
-              <a v-if="detalle.poa" :href="detalle.poa" target="_blank">POA</a>
-              <a v-if="detalle.certificacion_presupuestaria" :href="detalle.certificacion_presupuestaria" target="_blank">Certificación</a>
-              <a v-if="detalle.comprobante_compra" :href="detalle.comprobante_compra" target="_blank">Factura</a>
-              <a v-if="detalle.acta_conformidad" :href="detalle.acta_conformidad" target="_blank">Acta</a>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
+<p v-if="errorAccion" class="alm-error" role="alert">{{ errorAccion }}</p></ModalSia>
+<ModalSia v-if="detalle" :titulo="`Detalle del expediente · ${detalle.codigo}`" amplio @cerrar="detalle=null">
+  <DetalleAlmacen :registro="detalle" :estado="etiquetaEstado(detalle.estado)" :actas="actasDetalle" :error="errorDetalle" @ver="verArchivo" />
+</ModalSia>
+<ModalSia v-if="visor" :titulo="visor.nombre" amplio @cerrar="cerrarVisor"><p v-if="visor.cargando" role="status">Abriendo documento…</p><p v-if="visor.error" class="alm-error" role="alert">{{ visor.error }}</p><template v-if="visor.url"><iframe v-if="visor.tipo==='application/pdf'" :src="visor.url" :title="visor.nombre" class="alm-pdf"></iframe><img v-else-if="visor.tipo.startsWith('image/')" :src="visor.url" :alt="visor.nombre" class="alm-imagen"><p v-else>Descargue el archivo para abrirlo con su aplicación correspondiente.</p><a :href="visor.url" :download="visor.archivo" class="sia-secondary">Descargar documento</a></template></ModalSia>
+</div></template>
 <script setup>
+import AlmacenTabla from '../components/AlmacenTabla.vue'
+import ActaEntregaAlmacen from '../components/ActaEntregaAlmacen.vue'
+import ModalSia from '../components/ModalSia.vue'
+import DetalleAlmacen from '../components/DetalleAlmacen.vue'
+import EvidenciaFactura from '../components/EvidenciaFactura.vue'
+import { solicitarFirma } from '../utils/firma'
 import UsuarioHeader from '../components/UsuarioHeader.vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import LogoutModal from '../components/LogoutModal.vue'
 import IconoSigta from '../components/IconoSigta.vue'
@@ -381,6 +80,8 @@ const activo = ref(null)
 const detalle = ref(null)
 const comprobante = ref(null)
 const acta = ref(null)
+const actaId = ref(null), actaLista = ref(false)
+const errorCarga = ref(''), errorAccion = ref(''), errorDetalle = ref(''), actasDetalle = ref([]), visor = ref(null)
 const pasoActual = ref(1)
 
 const nombre = computed(() => usuario.value.nombre || usuario.value.nombre_completo || 'Compras y Almacén')
@@ -395,12 +96,14 @@ const porDespachar = computed(() => expedientes.value.filter(e => e.estado === '
 const porEntregar = computed(() => expedientes.value.filter(e => e.estado === 'COMPRA_REGISTRADA' && e.fecha_despacho_almacen))
 const historial = computed(() => expedientes.value.filter(e => e.fecha_ingreso_almacen || e.monto_real))
 const esGestionAlmacen = computed(() => ['comprar', 'entrada', 'salida', 'entrega'].includes(vista.value))
+const busquedaBandeja = ref('')
+const bandejaFiltrada = computed(() => bandejaActual.value.filter(e => [e.codigo,e.titulo,e.solicitante_nombre].some(v => String(v||'').toLowerCase().includes(busquedaBandeja.value.trim().toLowerCase()))))
 const bandejaActual = computed(() => ({ comprar: porComprar.value, entrada: porIngresar.value, salida: porDespachar.value, entrega: porEntregar.value }[vista.value] || []))
 const configuracionGestion = computed(() => ({
   comprar: { bandeja: 'Compras pendientes', etiqueta: 'Realizar compra', estado: 'fondos entregados', paso1: 'Revisar expediente y fondos', ayuda1: 'Confirme que el requerimiento y los fondos recibidos son correctos.', paso2: 'Registrar compra y respaldo', ayuda2: 'Registre el proveedor, monto real y factura o recibo.', accion: 'Registrar compra' },
   entrada: { bandeja: 'Entradas pendientes', etiqueta: 'Entrada de almacén', estado: 'compra registrada', paso1: 'Verificar producto adquirido', ayuda1: 'Revise el producto y sus datos de compra antes de ingresarlo.', paso2: 'Registrar ingreso a almacén', ayuda2: 'Indique la cantidad recibida y el responsable de recepción.', accion: 'Registrar entrada' },
   salida: { bandeja: 'Salidas pendientes', etiqueta: 'Salida de almacén', estado: 'en almacén', paso1: 'Verificar disponibilidad', ayuda1: 'Confirme las unidades disponibles y el destino solicitado.', paso2: 'Registrar salida de almacén', ayuda2: 'Indique las unidades que salen y quién las recibe.', accion: 'Registrar salida' },
-  entrega: { bandeja: 'Entregas pendientes', etiqueta: 'Entregar con acta', estado: 'salida registrada', paso1: 'Revisar salida y destinatario', ayuda1: 'Confirme el destino y las unidades despachadas.', paso2: 'Adjuntar acta de conformidad', ayuda2: 'Adjunte el acta que respalda la entrega formal.', accion: 'Entregar con acta' },
+  entrega: { bandeja: 'Entregas pendientes', etiqueta: 'Entregar con acta', estado: 'salida registrada', paso1: 'Revisar salida y destinatario', ayuda1: 'Confirme el destino y las unidades despachadas.', paso2: 'Adjuntar acta de conformidad', ayuda2: 'Genere el acta, imprímala y adjunte el PDF firmado por quien recibe y por el encargado.', accion: 'Entregar con acta' },
 }[vista.value] || {}))
 const contextoPaso1 = computed(() => {
   if (vista.value === 'comprar') return `Solicitado: ${activo.value?.cantidad || 0} unidad(es). Monto desembolsado: Bs ${activo.value?.monto_desembolsado || 's/d'}.`
@@ -411,9 +114,9 @@ const contextoPaso1 = computed(() => {
 const textoPasoUno = computed(() => vista.value === 'comprar' && !activo.value?.fondos_recibidos_en ? 'Confirmar recepción de fondos' : 'Aprobar y continuar')
 const pasoDosValido = computed(() => {
   if (vista.value === 'comprar') return !!(formCompra.monto_real && formCompra.proveedor.trim() && comprobante.value)
-  if (vista.value === 'entrada') return !!(formIngreso.cantidad_recibida && formIngreso.responsable_recepcion.trim())
-  if (vista.value === 'salida') return !!(formSalida.cantidad_entregada && formSalida.entregado_a.trim())
-  return !!acta.value
+  if (vista.value === 'entrada') return Number.isInteger(Number(formIngreso.cantidad_recibida)) && Number(formIngreso.cantidad_recibida)>0 && Number(formIngreso.cantidad_recibida)<=Number(activo.value?.cantidad) && !!formIngreso.responsable_recepcion.trim()
+  if (vista.value === 'salida') return Number.isInteger(Number(formSalida.cantidad_entregada)) && Number(formSalida.cantidad_entregada)>0 && Number(formSalida.cantidad_entregada)<=Number(activo.value?.cantidad_recibida) && !!formSalida.entregado_a.trim()
+  return !!(acta.value && actaId.value && actaLista.value)
 })
 
 const menu = computed(() => [
@@ -467,12 +170,14 @@ const token = () => localStorage.getItem('sigta_token')
 
 async function cargar() {
   cargando.value = true
+  errorCarga.value = ''
   try {
     const r = await fetch('/api/compras/solicitudes/', { headers: { Authorization: `Token ${token()}` } })
     const d = await r.json()
+    if (!r.ok) throw new Error(d.detalle || 'No se pudieron cargar los expedientes.')
     expedientes.value = Array.isArray(d) ? d : (d.results || [])
     if (activo.value) activo.value = expedientes.value.find(e => e.id === activo.value.id) || null
-  } finally {
+  } catch (e) { errorCarga.value = e.message } finally {
     cargando.value = false
   }
 }
@@ -485,6 +190,9 @@ function irA(id) {
 
 function abrir(e) {
   activo.value = e
+  errorAccion.value = ''
+  actaId.value = null
+  actaLista.value = false
   pasoActual.value = 1
   modoGestion.value = false
   comprobante.value = null
@@ -496,17 +204,55 @@ function abrir(e) {
   formIngreso.responsable_recepcion = ''
   formIngreso.observacion_ingreso = ''
   formSalida.cantidad_entregada = e.cantidad_recibida || 1
-  formSalida.entregado_a = ''
+  formSalida.entregado_a = e.receptor_acta?.nombre || ''
   formSalida.observacion_salida = ''
 }
 
 function cerrar() {
+  if (procesando.value) return
   activo.value = null
   pasoActual.value = 1
   modoGestion.value = false
 }
 
-function verDetalle(e) { detalle.value = e }
+function abrirCompraDashboard(e) { vista.value = 'comprar'; abrir(e) }
+async function verDetalle(e) {
+  detalle.value = e; actasDetalle.value = []; errorDetalle.value = ''
+  try {
+    const r = await fetch(`/api/compras/solicitudes/${e.id}/actas-almacen/`, { headers: { Authorization: `Token ${token()}` } })
+    const datos = await r.json()
+    if (!r.ok) throw new Error(datos.detalle || 'No se pudieron consultar las actas.')
+    if (detalle.value?.id === e.id) actasDetalle.value = datos
+  } catch (error) { if (detalle.value?.id === e.id) errorDetalle.value = error.message }
+}
+const resumenRegistro = computed(() => {
+  if (vista.value === 'comprar') return `Compra a ${formCompra.proveedor}: Bs. ${formCompra.monto_real}. Verificación: ${formCompra.observacion_verificacion || 'Sin observaciones'}.`
+  if (vista.value === 'entrada') return `${formIngreso.cantidad_recibida} unidad(es) recibidas por ${formIngreso.responsable_recepcion}. ${formIngreso.observacion_ingreso || 'Sin observaciones'}.`
+  if (vista.value === 'salida') return `${formSalida.cantidad_entregada} unidad(es) entregadas a ${formSalida.entregado_a}. ${formSalida.observacion_salida || 'Sin observaciones'}.`
+  return 'Se archivará el acta generada con el PDF firmado por quien recibe y por el encargado de almacén.'
+})
+let numeroVisor = 0
+async function verArchivo(url, nombreDocumento) {
+  if (!url) return
+  cerrarVisor()
+  const numero = numeroVisor
+  const operacion = { nombre: nombreDocumento, cargando: true, error: '', url: '', tipo: '', archivo: '' }
+  visor.value = operacion
+  try {
+    const destino = new URL(url, window.location.origin)
+    if (destino.origin !== window.location.origin || !/^\/(api|media)\//.test(destino.pathname)) throw new Error('El documento no pertenece al expediente.')
+    const r = await fetch(destino.pathname, { headers: { Authorization: `Token ${token()}` } })
+    if (!r.ok) throw new Error('No se pudo abrir el documento. Actualice el expediente y vuelva a intentarlo.')
+    const blob = await r.blob()
+    if (!visor.value || numero !== numeroVisor) return
+    if (blob.type.includes('json') || blob.type.includes('text/html')) throw new Error('El servidor no devolvió el documento solicitado.')
+    const pdf = (await blob.slice(0, 5).text()) === '%PDF-'
+    if (!visor.value || numero !== numeroVisor) return
+    const tipo = pdf ? 'application/pdf' : blob.type || 'application/octet-stream'
+    Object.assign(visor.value, { url: URL.createObjectURL(new Blob([blob], { type: tipo })), tipo, archivo: nombreDocumento.replace(/[^\p{L}\p{N} -]/gu, '') + (pdf ? '.pdf' : tipo === 'image/jpeg' ? '.jpg' : tipo === 'image/png' ? '.png' : '.bin') })
+  } catch (error) { if (visor.value && numero === numeroVisor) visor.value.error = error.message } finally { if (visor.value && numero === numeroVisor) visor.value.cargando = false }
+}
+function cerrarVisor() { numeroVisor++; if (visor.value?.url) URL.revokeObjectURL(visor.value.url); visor.value = null }
 
 const mostrarLogout = ref(false)
 
@@ -521,7 +267,7 @@ function confirmarSalida() {
   salir()
 }
 
-async function accion(endpoint, cuerpo, esFormData = false, mensajeExito = 'Registro guardado correctamente.') {
+async function accion(endpoint, cuerpo, esFormData = false, mensajeExito = 'Registro guardado correctamente.', mantenerAbierto = false) {
   procesando.value = true
   try {
     const headers = { Authorization: `Token ${token()}` }
@@ -534,11 +280,12 @@ async function accion(endpoint, cuerpo, esFormData = false, mensajeExito = 'Regi
     const d = await r.json().catch(() => ({}))
     if (!r.ok) throw new Error(d.detalle || Object.values(d)[0] || 'No fue posible completar la acción.')
     await cargar()
-    cerrar()
+    if (mantenerAbierto) pasoActual.value = 2
+    else { activo.value = null; pasoActual.value = 1 }
     await animarGuardado(mensajeExito)
     return d
   } catch (e) {
-    await animarError(e.message)
+    errorAccion.value = e.message
   } finally {
     procesando.value = false
   }
@@ -550,12 +297,16 @@ const formGestion = reactive({ gestion_estado: 'BUSCANDO', gestion_nota: '' })
 
 async function confirmarFondos(e) {
   activo.value = e
-  await accion('confirmar-recepcion-fondos', {}, false, 'Recepción de efectivo confirmada.')
+  const firma = await solicitarFirma('Recepción de fondos de Tesorería', activo.value.codigo)
+  if (!firma) return
+  await accion('confirmar-recepcion-fondos', {firma}, false, 'Recepción de efectivo confirmada.')
 }
 
 async function completarPasoUno() {
   if (vista.value === 'comprar' && !activo.value.fondos_recibidos_en) {
-    await accion('confirmar-recepcion-fondos', {}, false, 'Recepción de efectivo confirmada.')
+    const firma = await solicitarFirma('Recepción de fondos de Tesorería', activo.value.codigo)
+  if (!firma) return
+  await accion('confirmar-recepcion-fondos', {firma}, false, 'Recepción de efectivo confirmada.', true)
     return
   }
   pasoActual.value = 2
@@ -625,7 +376,9 @@ function onActa(evento) { acta.value = evento.target.files?.[0] || null }
 
 async function entregarConActa() {
   const datos = new FormData()
+  if (!acta.value || !actaId.value || !actaLista.value) return
   datos.append('acta_conformidad', acta.value)
+  datos.append('acta_id', actaId.value)
   await accion('entregar-con-acta', datos, true, 'Entrega registrada correctamente.')
 }
 
@@ -637,6 +390,7 @@ async function registrarGestion() {
 }
 
 onMounted(cargar)
+onUnmounted(cerrarVisor)
 </script>
 
 <style scoped>
@@ -652,4 +406,5 @@ main .stats article>i.gold,main .stats article>i.blue,main .stats article>i.gree
 /* Patrón maestro–detalle compartido con la vista de Tesorería. */
 .gestion-tickets-layout{display:flex;gap:20px;height:calc(100vh - 160px);overflow:hidden;align-items:stretch;margin-top:15px}.gestion-left{width:35%;display:flex;flex-direction:column;background:var(--sigta-blanco);border:1px solid var(--sigta-borde);border-radius:12px;overflow:hidden}.gestion-left-header{padding:15px 20px;border-bottom:1px solid var(--sigta-borde-suave);display:flex;justify-content:space-between;align-items:center;background:#f8fafc}.gestion-left-header h3{margin:0;font-size:14px}.badge{background:#fef9c3;color:#854d0e;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:700}.gestion-lista{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}.empty-list{padding:20px;text-align:center;color:var(--sigta-texto-suave);font-size:13px}.ticket-item{background:var(--sigta-blanco);border:1px solid var(--sigta-borde);border-radius:8px;padding:12px;cursor:pointer;transition:.2s}.ticket-item:hover{border-color:var(--sigta-azul);background:#f8fafc}.ticket-item.activo{border-color:var(--sigta-azul);background:#f0f4f8;border-left:4px solid var(--sigta-azul)}.t-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}.ticket-item h4{margin:0;font-size:14px;color:var(--sigta-azul)}.ticket-item p{margin:0;font-size:12px;color:var(--sigta-texto-suave);line-height:1.45}.item-meta{margin-top:6px!important;color:var(--sigta-mostaza-oscuro)!important;font-weight:700}.step-badge{font-size:10px;padding:3px 7px;border-radius:10px;text-transform:uppercase;font-weight:700;background:#dbeafe;color:#1e40af}.gestion-right{flex:1;display:flex;flex-direction:column;overflow:hidden}.ticket-header-card{background:var(--sigta-blanco);border:1px solid var(--sigta-borde);border-radius:12px;padding:20px;margin-bottom:15px}.ticket-header-card h2,.ticket-header-card h3{margin:0}.ticket-header-card>p{margin:8px 0;font-size:14px}.selector-vacio{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--sigta-texto-suave)}.selector-vacio>span{font-size:30px;color:var(--sigta-exito)}.gestion-detalle-wrapper{flex:1;overflow-y:auto;padding-right:10px;display:flex;flex-direction:column}.codigo-badge{background:var(--sigta-azul);color:var(--sigta-blanco);padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700}.t-meta{margin:0;font-size:12px;color:var(--sigta-texto-suave);display:flex;gap:15px}.workflow-card{flex:1;background:var(--sigta-blanco);border:1px solid var(--sigta-borde);border-radius:12px;display:flex;flex-direction:column;overflow:hidden;margin-bottom:20px}.wf-header{padding:15px 20px;border-bottom:1px solid var(--sigta-borde-suave);font-weight:700;background:#f8fafc}.wf-body{flex:1;overflow-y:auto;padding:25px;display:flex;flex-direction:column;position:relative}.wf-body:before{content:'';position:absolute;left:45px;top:35px;bottom:35px;width:2px;background:var(--sigta-borde-suave);z-index:1}.wf-step{display:flex;margin-bottom:30px;position:relative;z-index:2}.wf-step:last-child{margin-bottom:0}.step-num{width:42px;height:42px;border-radius:50%;background:var(--sigta-borde);color:var(--sigta-texto-suave);display:grid;place-items:center;font-weight:700;flex-shrink:0;border:4px solid var(--sigta-blanco)}.step-content{margin-left:20px;flex:1;background:var(--sigta-blanco);border:1px solid var(--sigta-borde);border-radius:10px;padding:15px 20px}.step-content h4{margin:0 0 5px;font-size:15px}.step-content>p{margin:0 0 15px;font-size:12px;color:var(--sigta-texto-suave)}.wf-step.active .step-num{background:var(--sigta-azul);color:var(--sigta-blanco);box-shadow:0 0 0 4px rgba(0,42,92,.1)}.wf-step.active .step-content{border-color:var(--sigta-azul);box-shadow:0 4px 12px rgba(0,0,0,.05)}.wf-step.completed .step-num{background:var(--sigta-azul-medio);color:var(--sigta-blanco)}.wf-step.completed .step-content,.wf-step.locked .step-content{background:#f8fafc}.wf-step.locked{opacity:.5;pointer-events:none}.step-form{margin-top:15px}.step-actions{display:flex;gap:10px}.reject{background:var(--sigta-blanco);border:1px solid var(--sigta-error);color:var(--sigta-error);padding:10px 20px;border-radius:6px;font-weight:700;cursor:pointer}.flex-btn{flex:1;text-align:center;justify-content:center;padding:10px;border-radius:6px;font-weight:700;cursor:pointer;border:none}.campo input{background:var(--sigta-blanco)}
 @media(max-width:1050px){.gestion-tickets-layout{flex-direction:column;height:auto}.gestion-left{width:100%;height:300px}.gestion-right{min-height:650px}}@media(max-width:760px){.gestion-right{min-height:620px}.wf-body{padding:16px}.step-content{margin-left:10px;padding:14px}.t-meta{flex-direction:column;gap:4px}}
+.almacen-vista>aside .alm-menu-item .icon-badge{background:var(--alm-icon-bg)!important;color:var(--alm-icon)!important;width:30px!important;height:30px}.alm-menu-item .icon-badge :deep(svg){color:inherit}.almacen-vista>aside .alm-menu-item .alm-menu-label{width:auto!important;background:transparent!important;color:inherit!important;font-size:13px!important;flex:1;font-weight:inherit}.almacen-vista>aside .alm-menu-item{background:transparent!important;color:#dbe7f6!important;border-left:3px solid transparent!important}.almacen-vista>aside .alm-menu-item.active{background:#ffffff22!important;color:var(--sigta-mostaza)!important;border-left-color:var(--sigta-mostaza)!important}.almacen-vista>aside .alm-menu-item:hover{background:#ffffff12!important}.almacen-vista>aside .brand-row{padding-bottom:18px;border-bottom:1px solid #ffffff25}.almacen-vista>aside .brand-row .brand{border-bottom:0!important;min-height:0!important;padding:0 8px!important}.wf-header{background:var(--sigta-azul);color:white}.wf-step .step-num{display:none}.wf-step .step-content{margin-left:0;min-width:0}.wf-body:before{display:none}.wf-body{overflow:visible}.workflow-card{flex:none}.t-meta{flex-wrap:wrap}.ticket-header-card>p{overflow-wrap:anywhere}.alm-error{padding:12px 16px;background:var(--sigta-error-fondo);color:var(--sigta-error);border-radius:8px;font-size:13px}.alm-confirmacion{padding:12px;background:#f4f7fb;border-radius:7px;color:var(--sigta-azul)!important}.alm-detalle{display:grid;gap:16px}.alm-actas-historial button{margin:8px 8px 0 0}.alm-pdf{width:100%;height:65dvh;border:1px solid var(--sigta-borde);border-radius:8px;margin-bottom:14px}.alm-imagen{display:block;max-width:100%;max-height:65dvh;object-fit:contain;margin:0 auto 16px}@media(max-width:760px){.step-actions{flex-wrap:wrap}.wf-body{padding:16px}.step-content{padding:16px}}
 </style>

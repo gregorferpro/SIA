@@ -1,12 +1,12 @@
 <template>
-  <div class="layout sigta-role-layout">
+  <div class="layout sigta-role-layout tecnico-menu">
     <aside :class="{ abierto: menuAbierto }">
       <div class="brand-row">
         <div class="brand"><b><img src="/img/emi.jpg" alt="EMI"></b><div><strong>SIA</strong><small>Soporte Técnico</small></div></div>
         <button type="button" class="menu-toggle" :aria-expanded="menuAbierto" aria-label="Mostrar opciones del menú" @click="menuAbierto = !menuAbierto"><span></span><span></span><span></span></button>
       </div>
       <p>MI TRABAJO</p>
-      <button v-for="m in menu" :key="m.id" :class="{active:vista===m.id}" @click="irA(m.id)"><span class="icon-badge" :style="{background:m.color+'26',color:m.color}"><IconoSigta :nombre="m.icono" :tamano="16" /></span>{{ m.nombre }}<em v-if="m.total!==undefined">{{ m.total }}</em></button>
+      <button v-for="m in menu" :key="m.id" :class="{active:vista===m.id}" @click="irA(m.id)"><IconoSigta class="nav-icon" :style="{color:m.color}" :nombre="m.icono" :tamano="17" />{{ m.nombre }}<em v-if="m.total!==undefined">{{ m.total }}</em></button>
       <div class="bottom"><button class="logout" @click="mostrarLogout = true"><IconoSigta nombre="salir" :tamano="17" />Cerrar sesión</button></div>
     </aside>
 
@@ -16,7 +16,7 @@
     <main>
       <header>
         <div><h1>{{ titulo }}</h1><p>{{ subtitulo }}</p></div>
-        <div class="header-actions"><button class="notification-bell" title="Notificaciones" @click="router.push('/especialista/notificaciones')">🔔<b v-if="notificacionesPendientes">{{notificacionesPendientes}}</b></button></div>
+        <div class="header-actions"><button class="notification-bell" title="Notificaciones" @click="irA('notificaciones')">🔔<b v-if="notificacionesPendientes">{{notificacionesPendientes}}</b></button></div>
       
         <UsuarioHeader @actualizar="cargar" />
       </header>
@@ -24,7 +24,8 @@
       <!-- ============================================================
            RESUMEN
       ============================================================= -->
-      <section v-if="vista==='resumen'">
+      <NotificacionesView v-if="vista==='notificaciones'" embedded @actualizadas="notificacionesPendientes=$event" />
+      <section v-else-if="vista==='resumen'">
         <div class="hero">
           <div><small>ESPECIALISTA</small><h2>{{ saludo }}, {{ primerNombre }}</h2><p>Órdenes de trabajo que requieren su atención.</p></div>
           <span>TI</span>
@@ -300,6 +301,7 @@
           <div class="detalle-campo" v-if="ticketDetalle.plan_solucion"><b>Plan de solución</b><p>{{ ticketDetalle.plan_solucion }}</p></div>
           <div class="detalle-campo" v-if="ticketDetalle.componente_requerido"><b>Componente requerido</b><p>{{ ticketDetalle.componente_requerido }} — {{ ticketDetalle.especificaciones_tecnicas || 'sin especificaciones' }} — Bs. {{ ticketDetalle.costo_estimado || 's/d' }}</p></div>
           <div class="detalle-campo" v-if="ticketDetalle.motivo_no_viable"><b>Compra no viable</b><p>{{ ticketDetalle.motivo_no_viable }}</p></div>
+          <ActasRecepcionTecnico v-if="ticketDetalle.compra_vinculada?.id" :compra-id="ticketDetalle.compra_vinculada.id" />
           <div class="detalle-campo" v-if="ticketDetalle.codigo_compra_vinculada"><b>Expediente de compra</b><span>{{ ticketDetalle.codigo_compra_vinculada }}</span></div>
           <div class="detalle-campo" v-if="ticketDetalle.solucion"><b>Intervención realizada</b><p>{{ ticketDetalle.solucion }}</p></div>
           <div class="detalle-campo" v-if="ticketDetalle.resultado_pruebas"><b>Resultado de pruebas técnicas</b><p>{{ ticketDetalle.resultado_pruebas }}</p></div>
@@ -316,8 +318,12 @@
 </template>
 
 <script setup>
+import ActasRecepcionTecnico from '../components/ActasRecepcionTecnico.vue'
+import { solicitarFirma } from '../utils/firma'
+import DocumentosExpediente from '../components/DocumentosExpediente.vue'
 import UsuarioHeader from '../components/UsuarioHeader.vue'
-import { computed, onMounted, reactive, ref } from 'vue'
+import NotificacionesView from './NotificacionesView.vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import LogoutModal from '../components/LogoutModal.vue'
 import IconoSigta from '../components/IconoSigta.vue'
@@ -328,7 +334,7 @@ const router = useRouter()
 const route = useRoute()
 const { mostrar: mostrarGuardado, texto: textoGuardado, tipo: tipoGuardado, animar: animarGuardado, animarError, ocultar: ocultarGuardado } = usarGuardado()
 const usuario = ref(JSON.parse(localStorage.getItem('sigta_usuario') || '{}'))
-const seccionesValidas = ['resumen','misordenes','curso','cotizaciones','trabajo','informes','compras','historial']
+const seccionesValidas = ['resumen','misordenes','curso','cotizaciones','trabajo','informes','compras','historial','notificaciones']
 const vistaInicial = seccionesValidas.includes(String(route.query.vista)) ? String(route.query.vista) : 'resumen'
 const vista = ref(vistaInicial)
 const menuAbierto = ref(false)
@@ -398,6 +404,7 @@ const menu = computed(() => [
 ])
 
 const titulo = computed(() => ({
+  notificaciones: 'Notificaciones',
   resumen: 'Panel del Especialista',
   misordenes: 'Mis órdenes',
   curso: 'Trabajos en curso',
@@ -411,6 +418,7 @@ const titulo = computed(() => ({
 }[vista.value]))
 
 const subtitulo = computed(() => ({
+  notificaciones: 'Decisiones y novedades relacionadas con sus tickets.',
   resumen: 'Diagnóstico, reparación y pruebas técnicas de las órdenes asignadas a usted.',
   misordenes: 'Expedientes asignados a usted, organizados por su etapa actual.',
   curso: 'Órdenes recibidas que todavía requieren atención técnica.',
@@ -483,6 +491,7 @@ async function cargar() {
 }
 
 async function postAccion(ticket, endpoint, body, esFormData = false) {
+  if(endpoint === 'pruebas-tecnicas'){const firma=await solicitarFirma('Informe técnico de soporte',ticket.codigo);if(!firma)throw new Error('Firma cancelada.');if(esFormData)body.append('firma',JSON.stringify(firma));else body={...body,firma}}
   if (procesando.value) throw new Error('La acción ya se está procesando.')
   procesando.value = true
   try {
@@ -513,7 +522,6 @@ async function postAccion(ticket, endpoint, body, esFormData = false) {
 }
 
 function irA(id) {
-  if (id === 'notificaciones') { router.push('/especialista/notificaciones'); return }
   vista.value = id
   menuAbierto.value = false
   ordenAbierta.value = null
@@ -692,6 +700,13 @@ async function enviarInformeTecnico() {
 }
 
 onMounted(cargar)
+watch(() => route.query, consulta => {
+  if (seccionesValidas.includes(String(consulta.vista))) irA(String(consulta.vista))
+  if (consulta.ticket) {
+    ticketDetalle.value = tickets.value.find(t => String(t.id) === String(consulta.ticket)) || null
+    if (!ticketDetalle.value) cargar()
+  }
+})
 </script>
 
 <style scoped>
@@ -724,4 +739,8 @@ main .stats article>i.gold,main .stats article>i.blue,main .stats article>i.gree
 .evidence-card{grid-column:1/-1;display:flex;align-items:center;gap:16px;border:1px solid var(--sigta-borde);border-radius:10px;padding:14px;background:#fff}.evidence-card img{width:150px;height:95px;object-fit:cover;border-radius:7px}.evidence-card b,.evidence-card small{display:block}.evidence-card small{color:var(--sigta-texto-suave);margin:4px 0 10px}.evidence-card a{display:inline-block;background:var(--sigta-azul);color:#fff;text-decoration:none;padding:8px 12px;border-radius:7px;font-weight:700;font-size:12px}.doc-icon{width:62px;height:62px;border-radius:8px;background:var(--sigta-error-fondo);color:var(--sigta-error);display:grid;place-items:center;font-weight:900}
 .priority-list article{display:flex;align-items:center;justify-content:space-between;gap:15px;border-top:1px solid var(--sigta-borde);padding:13px 2px}.priority-list small{display:block;color:var(--sigta-texto-suave);margin-top:4px}.priority-list button{border:0;border-radius:7px;padding:9px 12px}.work-filters{display:grid;grid-template-columns:1fr 1fr 2fr;gap:12px;margin-bottom:16px}.work-filters label{font-size:11px;font-weight:700;color:var(--sigta-texto-suave)}.work-filters select,.work-filters input{display:block;width:100%;margin-top:5px;padding:9px;border:1px solid var(--sigta-borde);border-radius:7px;background:#fff}.report-preview{background:#f5f8fc;border:1px solid var(--sigta-borde);border-radius:9px;padding:14px}.report-preview p{font-size:12px;line-height:1.6;color:var(--sigta-texto-suave)}
 @media(max-width:720px){.work-filters,.detalle-modal-body{grid-template-columns:1fr}.evidence-card{align-items:flex-start;flex-direction:column}.evidence-card img{width:100%;height:auto;max-height:220px}.priority-list article{align-items:flex-start;flex-direction:column}.priority-list button{width:100%}}
+</style>
+
+<style scoped>
+.tecnico-menu>aside>button{gap:11px;min-height:42px;padding:0 12px;border-radius:8px;font-size:13px;font-weight:600}.tecnico-menu>aside>button :deep(.icono-sigta){flex-shrink:0}.tecnico-menu>aside .brand{display:flex;gap:11px;align-items:center}.tecnico-menu>aside>p{letter-spacing:1.4px;font-size:10px}.tecnico-menu>aside>button em{margin-left:auto}.tecnico-menu>aside>button.active{color:var(--sigta-mostaza)!important}
 </style>

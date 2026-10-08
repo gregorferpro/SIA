@@ -46,9 +46,9 @@ defineEmits(['cerrar'])
   align-items: center;
   justify-content: center;
   gap: 18px;
-  border-radius: 26px;
-  background: linear-gradient(140deg, #5b1780 0%, #9b1fb8 55%, #b52bd0 100%);
-  box-shadow: 0 26px 60px rgba(70, 8, 100, .5);
+  border-radius: 12px;
+  background: var(--sigta-azul);
+  box-shadow: 0 26px 60px rgba(18, 58, 107, .2);
   transform-origin: center;
   animation: tg-in .72s cubic-bezier(.25, .9, .3, 1) both;
 }
@@ -102,7 +102,7 @@ defineEmits(['cerrar'])
   border: none;
   border-radius: 999px;
   background: #fff;
-  color: #7a1ba8;
+  color: var(--sigta-azul);
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;

@@ -1,12 +1,12 @@
 <template>
-  <div class="layout sigta-role-layout">
+  <div class="layout sigta-role-layout sia-gestion">
     <aside :class="{ abierto: menuAbierto }">
       <div class="brand-row">
         <div class="brand"><b><img src="/img/emi.jpg" alt="EMI"></b><div><strong>SIA</strong><small>Mantenimiento</small></div></div>
         <button type="button" class="menu-toggle" :aria-expanded="menuAbierto" aria-label="Mostrar opciones del menú" @click="menuAbierto = !menuAbierto"><span></span><span></span><span></span></button>
       </div>
       <p>GESTIÓN DE MANTENIMIENTO</p>
-      <button v-for="m in menu" :key="m.id" :class="{active:vista===m.id}" @click="irA(m.id)"><span class="icon-badge" :style="{background:m.color+'26',color:m.color}"><IconoSigta :nombre="m.icono" :tamano="16" /></span>{{ m.nombre }}<em v-if="m.total!==undefined">{{ m.total }}</em></button>
+      <button v-for="m in menu" :key="m.id" :class="{active:vista===m.id}" @click="irA(m.id)"><span class="icon-badge" :style="{'--menu-icon':m.color,'--menu-icon-bg':m.color+'26'}"><IconoSigta :nombre="m.icono" :tamano="16" /></span>{{ m.nombre }}<em v-if="m.total!==undefined">{{ m.total }}</em></button>
       <div class="sidebar-watermark" aria-hidden="true">
         <img src="/img/marca-de-agua.png" alt="">
         <div class="wm-text"><b>EMI</b><span>Escuela Militar de Ingeniería</span><small>"Mcal. Antonio José de Sucre"</small></div>
@@ -45,7 +45,7 @@
             <div class="process-grid">
               <button class="process-card" style="border-top-color:#3E7BD6" @click="irA('gestion')"><span class="process-num" style="background:#3E7BD626;color:#3E7BD6">01</span><div><b>Gestión integral de tickets</b><small>Validar, clasificar prioridad y designar técnico</small></div></button>
               <button class="process-card" style="border-top-color:#C79A1E" @click="irA('compra')"><span class="process-num" style="background:#C79A1E26;color:#C79A1E">02</span><div><b>Recibir requerimiento y cotización</b><small>Evaluar la viabilidad de la compra</small></div></button>
-              <button class="process-card" style="border-top-color:#2FA85C" @click="irA('informe')"><span class="process-num" style="background:#2FA85C26;color:#2FA85C">03</span><div><b>Verificar funcionamiento</b><small>Confirmar si el problema quedó resuelto</small></div></button>
+              <button class="process-card" style="border-top-color:#2FA85C" @click="irA('informe')"><span class="process-num" style="background:#2FA85C26;color:#2FA85C">03</span><div><b>Consultar conformidad</b><small>Consultar si el problema quedó resuelto</small></div></button>
               <button class="process-card" style="border-top-color:#7B6FD9" @click="irA('informe')"><span class="process-num" style="background:#7B6FD926;color:#7B6FD9">04</span><div><b>Conformidad e informe final</b><small>Cerrar el caso y elevarlo a la Dirección</small></div></button>
             </div>
           </section>
@@ -58,404 +58,39 @@
       </section>
 
       <!-- ========================= GESTIÓN DE TICKETS ========================= -->
-      <section v-else-if="vista==='gestion'" class="gestion-tickets-layout vista-compacta vista-gestion">
-
-        <!-- ---------- COLUMNA IZQUIERDA: bandeja + informacion del ticket ---------- -->
-        <div class="gestion-col-izq">
-
-          <!-- Resumen de tickets -->
-          <div class="gestion-left gestion-resumen">
-            <div class="gestion-stats">
-            <div class="g-stat"><i class="badge" style="background:#3E7BD626;color:#3E7BD6"><IconoSigta nombre="tickets" :tamano="16" /></i><div><small>Total</small><b>{{ ticketsGestion.length }}</b></div></div>
-            <div class="g-stat"><i class="badge" style="background:#DC262626;color:#DC2626"><IconoSigta nombre="tickets" :tamano="16" /></i><div><small>Por validar</small><b>{{ porValidar.length }}</b></div></div>
-            <div class="g-stat"><i class="badge" style="background:#C79A1E26;color:#C79A1E"><IconoSigta nombre="actividades" :tamano="16" /></i><div><small>Por priorizar</small><b>{{ porClasificar.length }}</b></div></div>
-            <div class="g-stat"><i class="badge" style="background:#3E7BD626;color:#3E7BD6"><IconoSigta nombre="usuarios" :tamano="16" /></i><div><small>Por designar</small><b>{{ porDesignar.length }}</b></div></div>
-          </div>
-          </div>
-
-          <!-- Unidad de busqueda y seleccion de ticket -->
-          <div class="bloque-seleccion">
-
-            <div class="selector-informe selector-ticket">
-            <span class="selector-label">Ticket seleccionado</span>
-            <button type="button" :class="['selector-trigger', selectorTicketAbierto ? 'abierto' : '']" @click="selectorTicketAbierto = !selectorTicketAbierto">
-              <span v-if="itemActivo" class="selector-valor"><b>{{ itemActivo.codigo }}</b> — {{ itemActivo.titulo }}</span>
-              <span v-else class="selector-valor vacio">Seleccione un ticket · {{ ticketsGestion.length }} en bandeja</span>
-              <i :class="['selector-flecha', selectorTicketAbierto ? 'abierta' : '']">▾</i>
-            </button>
-
-            <div v-if="selectorTicketAbierto" class="selector-panel">
-              <div class="gestion-filtros">
-            <div class="g-buscar"><IconoSigta nombre="solicitudes" :tamano="15" /><input v-model="busquedaTickets" type="text" placeholder="Buscar por código, título o solicitante..."></div>
-            <select v-model="filtroEstadoTickets">
-              <option value="TODOS">Todos los estados</option>
-              <option value="RECIBIDO">Por validar</option>
-              <option value="CLASIFICAR">Por priorizar</option>
-              <option value="DESIGNAR">Por designar</option>
-            </select>
-          </div>
-              <div class="selector-cabecera"><span>Código</span><span>Título</span><span>Estado</span></div>
-              <div class="selector-lista">
-                <button v-for="r in ticketsPaginados" :key="r.id" type="button" :class="['selector-fila', itemActivo?.id === r.id ? 'activo' : '']" @click="abrir(r); selectorTicketAbierto = false">
-                  <span class="c-codigo">{{ r.codigo }}</span>
-                  <span class="c-titulo">{{ r.titulo }}</span>
-                  <em v-if="r.estado_codigo === 'RECIBIDO'" class="e-validar">Paso 1: Por Validar</em>
-                  <em v-else-if="!r.prioridad_jefatura" class="e-clasificar">Paso 2: Por Priorizar</em>
-                  <em v-else class="e-designar">Paso 3: Por Designar</em>
-                </button>
-                <div v-if="!ticketsFiltrados.length" class="empty-list">{{ ticketsGestion.length ? 'Ningún ticket coincide con la búsqueda.' : 'Bandeja al día. No hay tickets pendientes.' }}</div>
-              </div>
-              <div v-if="totalPaginasTickets > 1" class="gestion-paginacion">
-            <button type="button" :disabled="paginaTickets===1" @click="paginaTickets--">‹</button>
-            <span>Página {{ paginaTickets }} de {{ totalPaginasTickets }}</span>
-            <button type="button" :disabled="paginaTickets===totalPaginasTickets" @click="paginaTickets++">›</button>
-          </div>
-            </div>
-          </div>
-          </div>
-
-          <!-- Informacion del ticket (movida a la columna izquierda) -->
-              <div v-if="itemActivo" class="ticket-header-card">
-                <div class="t-head">
-                  <h2>{{ itemActivo.titulo }}</h2>
-                  <span class="codigo-badge">{{ itemActivo.codigo }}</span>
-                </div>
-                <p class="t-meta">
-                  <span>👤 <b>Solicitante:</b> {{ itemActivo.solicitante_nombre }}</span>
-                  <span>📍 <b>Ubicación:</b> {{ itemActivo.ubicacion }}</span>
-                </p>
-                
-                <div class="t-content">
-                  <div class="desc-box">
-                    <strong>Descripción del problema</strong>
-                    <p>{{ itemActivo.descripcion }}</p>
-                  </div>
-                  
-                  <div class="evidence-box" v-if="itemActivo.evidencia_archivo_url">
-                    <div class="evidence-info">
-                      <strong>Evidencia fotográfica</strong>
-                      <span>Archivo adjunto por el solicitante</span>
-                    </div>
-                    <a class="evidence-btn" :href="itemActivo.evidencia_archivo_url" target="_blank">
-                      Ver Evidencia ↗
-                    </a>
-                  </div>
-                </div>
-              </div>
-        </div>
-
-        <!-- ---------- COLUMNA DERECHA: consola de gestion ---------- -->
-        <div class="gestion-right">
-          <div v-if="!itemActivo" class="empty">
-            <span>←</span>
-            <h3>Seleccione un ticket</h3>
-            <p>Seleccione un ticket de la lista para gestionar su flujo operativo.</p>
-          </div>
-                      <div v-else class="workflow-card">
-              <div class="wf-header">Consola de Gestión (Flujo)</div>
-              <div class="wf-body">
-                
-                <!-- PASO 1: VALIDACIÓN -->
-                <div :class="['wf-step', itemActivo.estado_codigo !== 'RECIBIDO' ? 'completed' : 'active']">
-                  <div class="step-num">1</div>
-                  <div class="step-content">
-                    <h4>Validación del Ticket <span v-if="itemActivo.estado_codigo !== 'RECIBIDO'" class="step-badge">✓ Completado</span></h4>
-                    <p v-if="itemActivo.estado_codigo === 'RECIBIDO'">Revisa la descripción y aprueba o rechaza esta solicitud.</p>
-                    <div v-if="itemActivo.estado_codigo === 'RECIBIDO'" class="step-actions">
-                      <button class="primary flex-btn" :disabled="procesando" @click="validar(itemActivo)">Aprobar</button>
-                      <button class="reject" :disabled="procesando" @click="rechazar(itemActivo)">Rechazar</button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- PASO 2: CLASIFICAR PRIORIDAD -->
-                <div :class="['wf-step', itemActivo.estado_codigo === 'RECIBIDO' ? 'locked' : (itemActivo.prioridad_jefatura ? 'completed' : 'active')]">
-                  <div class="step-num">2</div>
-                  <div class="step-content">
-                    <h4>Clasificar Prioridad <span v-if="itemActivo.prioridad_jefatura" class="step-badge">✓ {{ itemActivo.prioridad_jefatura }}</span></h4>
-                    <p v-if="!itemActivo.prioridad_jefatura">Determina la urgencia y justifícala.</p>
-                    <div v-if="itemActivo.estado_codigo !== 'RECIBIDO' && !itemActivo.prioridad_jefatura">
-                      <div class="p-options">
-                        <label><input type="radio" v-model="formClasificar.prioridad" value="BAJA"> Baja</label>
-                        <label><input type="radio" v-model="formClasificar.prioridad" value="MEDIA"> Media</label>
-                        <label><input type="radio" v-model="formClasificar.prioridad" value="ALTA"> Alta</label>
-                        <label><input type="radio" v-model="formClasificar.prioridad" value="URGENTE"> Urgente</label>
-                      </div>
-                      <textarea v-model="formClasificar.criterio_prioridad" placeholder="Justifique la prioridad asignada..." rows="2"></textarea>
-                      <button class="primary step-btn" :disabled="procesando || !formClasificar.prioridad || !formClasificar.criterio_prioridad.trim()" @click="clasificar">Guardar prioridad</button>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- PASO 3: DESIGNAR TÉCNICO -->
-                <div :class="['wf-step', !itemActivo.prioridad_jefatura ? 'locked' : 'active']">
-                  <div class="step-num">3</div>
-                  <div class="step-content">
-                    <h4>Designar Técnico</h4>
-                    <p v-if="!itemActivo.tecnico_id">Asigna a la persona responsable de la reparación.</p>
-                    <div v-if="itemActivo.prioridad_jefatura">
-                      <select v-model="formDesignar.tecnico_id" class="full-select">
-                        <option value="">Seleccione un técnico...</option>
-                        <option v-for="t in tecnicos" :key="t.id" :value="t.id">{{ t.nombre_completo || t.email }}</option>
-                      </select>
-                      <small v-if="!tecnicos.length" style="display:block;margin-top:5px;color:red;">No hay técnicos activos disponibles.</small>
-                      <button class="primary step-btn" :disabled="procesando || !formDesignar.tecnico_id" @click="designar">Confirmar Asignación</button>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            </div>
+      <section v-else-if="vista==='gestion'">
+        <div class="gestion-toolbar"><label><IconoSigta nombre="buscar" :tamano="17" /><input v-model="busquedaTickets" placeholder="Buscar por código, título o solicitante"></label><span>{{ ticketsFiltrados.length }} ticket(s)</span></div>
+        <div v-if="cargando" class="empty">Consultando tickets…</div>
+        <div v-else class="gestion-kanban">
+          <section v-for="columna in columnasGestion" :key="columna.id" :class="['gestion-columna',columna.id]">
+            <div class="gestion-columna-head"><b><i aria-hidden="true"></i>{{ columna.nombre }}</b><em>{{ columna.items.length }}</em></div>
+            <article v-for="r in columna.items" :key="r.id" class="gestion-ticket">
+              <div class="gestion-ticket-head"><b>{{ r.codigo }}</b><span>{{ r.prioridad_jefatura || 'Sin clasificar' }}</span></div>
+              <h3>{{ r.titulo }}</h3>
+              <dl><div><dt>Solicitante</dt><dd>{{ r.solicitante_nombre }}</dd></div><div><dt>Ubicación</dt><dd>{{ r.ubicacion || 'Sin especificar' }}</dd></div><div><dt>Técnico</dt><dd>{{ r.auxiliar_asignado_nombre || 'Sin asignar' }}</dd></div><div><dt>SLA</dt><dd>{{ r.sla_horas ? r.sla_horas+' horas' : 'Sin asignar' }}</dd></div><div><dt>Estado</dt><dd>{{ r.estado_nombre || r.estado_codigo }}</dd></div></dl>
+              <button type="button" @click="verItem(r)">Ver detalle</button>
+            </article>
+            <p v-if="!columna.items.length" class="empty-list">Sin tickets</p>
+          </section>
         </div>
       </section>
 
       <!-- ===================== 4. VIABILIDAD COMPRA (NUEVO MAESTRO-DETALLE) ===================== -->
-      <div v-else-if="vista==='compra'" class="gestion-tickets-layout vista-compacta vista-compra">
-
-        <!-- ---------- COLUMNA IZQUIERDA: selector compacto + detalles ---------- -->
-        <div class="compra-col-izq">
-
-          <div class="selector-informe selector-compra">
-            <div class="selector-encabezado">
-              <span class="selector-label">Compras Pendientes</span>
-              <span class="badge">{{ porEvaluarCompra.length }} por evaluar</span>
-            </div>
-            <button type="button" :class="['selector-trigger', selectorCompraAbierto ? 'abierto' : '']" @click="selectorCompraAbierto = !selectorCompraAbierto">
-              <span v-if="itemActivo" class="selector-valor"><b>{{ itemActivo.codigo }}</b> — {{ itemActivo.titulo }}</span>
-              <span v-else class="selector-valor vacio">Seleccione un requerimiento</span>
-              <i :class="['selector-flecha', selectorCompraAbierto ? 'abierta' : '']">▾</i>
-            </button>
-
-            <div v-if="selectorCompraAbierto" class="selector-panel">
-              <div class="g-buscar"><IconoSigta nombre="solicitudes" :tamano="15" /><input v-model="busquedaCompra" type="text" placeholder="Buscar por código, título o solicitante..."></div>
-              <div class="selector-cabecera"><span>Código</span><span>Título</span><span>Estado</span></div>
-              <div class="selector-lista">
-                <button v-for="r in comprasFiltradas" :key="r.id" type="button" :class="['selector-fila', itemActivo?.id === r.id ? 'activo' : '']" @click="abrir(r); selectorCompraAbierto = false">
-                  <span class="c-codigo">{{ r.codigo }}</span>
-                  <span class="c-titulo"><b>{{ r.titulo }}</b><small>📍 {{ r.ubicacion || 's/d' }} • 📦 {{ r.producto_requerido || 's/d' }}</small></span>
-                  <em class="e-validar">Por Evaluar</em>
-                </button>
-                <div v-if="!comprasFiltradas.length" class="empty-list">{{ porEvaluarCompra.length ? 'Ningún requerimiento coincide con la búsqueda.' : 'Bandeja al día. No hay requerimientos por evaluar.' }}</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Detalles del componente solicitado (columna izquierda) -->
-            <div v-if="itemActivo" class="ticket-header-card">
-              <div class="t-head">
-                <h2>{{ itemActivo.titulo }}</h2>
-                <span class="codigo-badge">{{ itemActivo.codigo }}</span>
-              </div>
-              <p class="t-meta">
-                <span>👤 <b>Técnico asignado:</b> {{ itemActivo.tecnico_asignado_nombre || 's/d' }}</span>
-              </p>
-              
-              <div class="t-content">
-                <div class="desc-box">
-                  <strong>Detalles del componente solicitado</strong>
-                  <p><b>Componente:</b> {{ itemActivo.producto_requerido }}</p>
-                  <p v-if="itemActivo.especificacion_producto"><b>Especificación:</b> {{ itemActivo.especificacion_producto }}</p>
-                  <p><b>Cantidad requerida:</b> {{ itemActivo.cantidad_requerida || 1 }}</p>
-                  <p><b>Costo estimado:</b> Bs. {{ itemActivo.costo_estimado || 's/d' }}</p>
-                </div>
-                
-                <div class="evidence-box" v-if="itemActivo.cotizacion_archivo_url || itemActivo.cotizacion_archivo">
-                  <div class="evidence-info">
-                    <strong>Cotización de referencia</strong>
-                    <span>Archivo adjunto por el técnico</span>
-                  </div>
-                  <a class="evidence-btn" :href="itemActivo.cotizacion_archivo_url || itemActivo.cotizacion_archivo" target="_blank">
-                    Ver Cotización ↗
-                  </a>
-                </div>
-              </div>
-            </div>
-        </div>
-
-        <!-- ---------- COLUMNA DERECHA: armado del expediente ---------- -->
-        <div class="compra-col-der">
-          <div v-if="!itemActivo" class="empty">
-            <span style="font-size:30px">📦</span>
-            <h3>Seleccione un requerimiento</h3>
-            <p>Seleccione un requerimiento de compra de la lista para gestionar su expediente y enviarlo a la DAF.</p>
-          </div>
-                      <div v-else class="workflow-card">
-              <div class="wf-header">Armado de Expediente para la DAF</div>
-              <div class="wf-body">
-                <div v-if="!formCompra.viable" class="wf-step active">
-                  <div class="step-num">!</div>
-                  <div class="step-content" style="border-color: var(--sigta-error)">
-                    <h4 style="color: var(--sigta-error)">Rechazar Compra</h4>
-                    <p>Indique el motivo por el cual la compra no procede. El ticket se cerrará sin compra.</p>
-                    <textarea v-model="formCompra.motivo_no_viable" placeholder="Ej: No hay presupuesto, repuesto equivocado..." rows="3" style="width: 100%; padding: 10px; margin-bottom:10px; border: 1px solid var(--sigta-borde); border-radius: 6px; font-family: inherit"></textarea>
-                    <div class="step-actions" style="display:flex; gap: 8px">
-                      <button class="primary step-btn" style="background: var(--sigta-error); border-color: var(--sigta-error)" :disabled="procesando || !formCompra.motivo_no_viable.trim()" @click="evaluarCompraUpload">Confirmar Rechazo</button>
-                      <button class="step-btn" style="background: #f1f5f9; color: var(--sigta-texto)" :disabled="procesando" @click="formCompra.viable = true">Retroceder</button>
-                    </div>
-                  </div>
-                </div>
-
-                <template v-else>
-                  <!-- PASO 1: INFORME -->
-                  <div :class="['wf-step', formCompra.informe ? 'completed' : 'active']">
-                    <div class="step-num">1</div>
-                    <div class="step-content">
-                      <a v-if="itemActivo.informe_compra" :href="itemActivo.informe_compra" target="_blank" class="adjunto">Ver informe técnico recibido</a><h4>Informe técnico <span v-if="formCompra.informe" class="step-badge">✓ Cargado</span></h4>
-                      <p>Adjunte el documento del informe justificativo (PDF o Word).</p>
-                      <div class="step-actions" style="margin-top: 10px;">
-                        <input type="file" accept=".pdf,.doc,.docx" @change="e => formCompra.informe = e.target.files[0]">
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- PASO 2: PROFORMA -->
-                  <div :class="['wf-step', !formCompra.informe ? 'locked' : (formCompra.proforma ? 'completed' : 'active')]">
-                    <div class="step-num">2</div>
-                    <div class="step-content">
-                      <a v-if="itemActivo.cotizacion_archivo" :href="itemActivo.cotizacion_archivo" target="_blank" class="adjunto">Ver cotización recibida</a><h4>Cotización <span v-if="formCompra.proforma" class="step-badge">✓ Cargada</span></h4>
-                      <p>Adjunte la imagen de la cotización o proforma (.png, .jpg).</p>
-                      <div v-if="formCompra.informe" class="step-actions" style="margin-top: 10px;">
-                        <input type="file" accept=".pdf,.png,.jpg,.jpeg" @change="e => formCompra.proforma = e.target.files[0]">
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- PASO 3: POA -->
-                  <div :class="['wf-step', !formCompra.proforma ? 'locked' : (formCompra.poa ? 'completed' : 'active')]">
-                    <div class="step-num">3</div>
-                    <div class="step-content">
-                      <h4>Subir POA <span v-if="formCompra.poa" class="step-badge">✓ Cargado</span></h4>
-                      <p>Adjunte el documento del POA (PDF o Word).</p>
-                      <div v-if="formCompra.proforma" class="step-actions" style="margin-top: 10px;">
-                        <input type="file" accept=".pdf,.doc,.docx" @change="e => formCompra.poa = e.target.files[0]">
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- PASO 4: ENVIAR A DAF -->
-                  <div :class="['wf-step', !formCompra.poa ? 'locked' : 'active']">
-                    <div class="step-num">4</div>
-                    <div class="step-content">
-                      <h4>Confirmar y Enviar a DAF</h4>
-                      <p>El expediente está completo. Elija una opción para finalizar.</p>
-                      <label class="campo">Proveído de jefatura<input type="file" accept=".pdf,.doc,.docx" @change="e => formCompra.pedido = e.target.files[0]"></label><div v-if="formCompra.poa" class="step-actions" style="margin-top: 10px; display:flex; gap: 8px">
-                        <button class="primary step-btn" style="background: #15803d; border-color: #15803d" :disabled="procesando" @click="evaluarCompraUpload">Aprobar y Enviar a DAF</button>
-                      </div>
-                      <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--sigta-borde-suave)">
-                        <button class="step-btn" style="color: var(--sigta-error); background: transparent; padding: 0" :disabled="procesando || !!itemActivo.compra_vinculada" @click="formCompra.viable = false">Rechazar compra en su lugar</button>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </div>
-        </div>
-      </div>
+      <section v-else-if="vista==='compra'">
+        <div class="gestion-toolbar"><label><IconoSigta nombre="buscar" :tamano="17" /><input v-model="busquedaCompra" placeholder="Buscar por código, título o solicitante"></label><span>{{ comprasFiltradas.length }} compra(s) por evaluar</span></div>
+        <div class="viabilidad-cards"><article v-for="r in comprasFiltradas" :key="r.id"><div class="gestion-ticket-head"><b>{{ r.codigo }}</b><span>Por evaluar</span></div><h3>{{ r.titulo }}</h3><p><b>Técnico:</b> {{ r.auxiliar_asignado_nombre || 'Sin asignar' }}</p><p><b>Componente:</b> {{ r.producto_requerido }}</p><p><b>Costo estimado:</b> Bs. {{ r.costo_estimado || 'Sin especificar' }}</p><button class="sia-primary" @click="abrirCompra(r)">Ver detalle y validar viabilidad</button></article><div v-if="!comprasFiltradas.length" class="empty">No hay compras pendientes de evaluación.</div></div>
+      </section>
 
       <!-- ======================= 5. VERIFICAR ======================= -->
       <section v-else-if="vista==='verificar'">
-        <div class="instruction"><b>Verificar funcionamiento</b><span>¿El problema quedó resuelto? Si no, el caso vuelve al técnico para una nueva intervención.</span></div>
-        <div v-if="porVerificar.length" class="cards">
-          <article v-for="r in porVerificar" :key="r.id" :class="{ retorno: Number(r.rework_count) > 0 }">
-            <div class="top"><span>{{ r.codigo }}</span><em>{{ r.estado_codigo }}</em></div>
-            <h3>{{ r.titulo }}</h3>
-            <div v-if="Number(r.rework_count) > 0" class="mini-alerta">⚠ Reproceso número {{ r.rework_count }}</div>
-            <p>{{ (r.informe_trabajo||'').slice(0,130) }}</p>
-            <div class="actions">
-              <button @click="verItem(r)">Ver detalle</button>
-              <button class="reject" @click="verificar(r,false)">No resuelto</button>
-              <button class="primary" @click="verificar(r,true)">Problema resuelto</button>
-            </div>
-          </article>
-        </div>
-        <div v-else class="empty"><span>✓</span><h3>Bandeja al día</h3><p>No hay requerimientos pendientes de verificación.</p></div>
+        <div class="instruction"><b>Conformidad del solicitante</b><span>El solicitante verifica el funcionamiento y registra su respuesta.</span></div>
+        <div class="cards"><article v-for="r in porVerificar" :key="r.id"><div class="top"><span>{{ r.codigo }}</span></div><h3>{{ r.titulo }}</h3><p>Pendiente de respuesta del solicitante.</p><div class="actions"><button @click="verItem(r)">Ver detalle</button></div></article></div>
       </section>
 
       <!-- =============== 6. CONFORMIDAD E INFORME FINAL =============== -->
       <section v-else-if="vista==='informe'">
-        <div class="instruction"><b>Conformidad e informe final</b><span>Informe la conformidad del mantenimiento y elabore el informe que se elevará a la Dirección.</span></div>
-
-        <div class="gestion-tickets-layout vista-compacta vista-informe">
-
-          <!-- ---------- COLUMNA IZQUIERDA: selector + informacion ---------- -->
-          <div class="informe-col-izq">
-
-            <!-- Selector compacto (reemplaza visualmente a la bandeja) -->
-            <div class="selector-informe">
-              <span class="selector-label">Informe seleccionado</span>
-              <button type="button" class="selector-trigger" @click="selectorInformeAbierto = !selectorInformeAbierto">
-                <span v-if="itemActivo" class="selector-valor"><b>{{ itemActivo.codigo }}</b> — {{ itemActivo.titulo }}</span>
-                <span v-else class="selector-valor vacio">Seleccione un informe · {{ pendientesInforme.length }} requiere acción</span>
-                <i :class="['selector-flecha', selectorInformeAbierto ? 'abierta' : '']">▾</i>
-              </button>
-
-              <div v-if="selectorInformeAbierto" class="selector-panel">
-                <div class="g-buscar"><IconoSigta nombre="solicitudes" :tamano="15" /><input v-model="busquedaInforme" type="text" placeholder="Buscar por código, título o solicitante..."></div>
-                <div class="selector-cabecera"><span>Código</span><span>Título</span><span>Estado</span></div>
-                <div class="selector-lista">
-                  <button v-for="r in informesFiltrados" :key="r.id" type="button" :class="['selector-fila', itemActivo?.id === r.id ? 'activo' : '']" @click="abrir(r); selectorInformeAbierto = false">
-                    <span class="c-codigo">{{ r.codigo }}</span>
-                    <span class="c-titulo">{{ r.titulo }}</span>
-                    <em :class="r.estado_codigo === 'CONFORMIDAD_INFORMADA' ? 'e-designar' : 'e-clasificar'">{{ r.estado_codigo === 'CONFORMIDAD_INFORMADA' ? 'Por informar' : 'Por conformar' }}</em>
-                  </button>
-                  <div v-if="!informesFiltrados.length" class="empty-list">{{ pendientesInforme.length ? 'Ningún informe coincide con la búsqueda.' : 'Bandeja al día. No hay casos esperando conformidad ni informe final.' }}</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Informacion del informe seleccionado -->
-            <div v-if="!itemActivo" class="empty">
-              <span>↑</span>
-              <h3>Seleccione un requerimiento</h3>
-              <p>Elija un caso en el selector para informar la conformidad y elevar su informe final paso a paso.</p>
-            </div>
-
-            <div v-else class="ticket-header-card">
-              <div class="t-head"><h2>{{ itemActivo.titulo }}</h2><span class="codigo-badge">{{ itemActivo.codigo }}</span></div>
-              <p class="t-meta"><span>👤 <b>Solicitante:</b> {{ itemActivo.solicitante_nombre || 's/d' }}</span><span>📍 <b>Ubicación:</b> {{ itemActivo.ubicacion || 's/d' }}</span></p>
-              <div class="t-content">
-                <div class="desc-box"><strong>Informe del técnico</strong><p>{{itemActivo.informe_trabajo}}</p><strong>Resumen técnico del caso</strong><p>{{ itemActivo.descripcion || 'Sin descripción registrada.' }}</p><p v-if="itemActivo.trabajo_realizado"><b>Trabajo realizado:</b> {{ itemActivo.trabajo_realizado }}</p><p v-if="itemActivo.resultado_pruebas"><b>Pruebas técnicas:</b> {{ itemActivo.resultado_pruebas }}</p></div>
-                <div v-if="itemActivo.fotografia_trabajo_url" class="evidence-box"><div class="evidence-info"><strong>Informe adjunto / evidencia del trabajo</strong><span>Evidencia registrada por el técnico</span></div><a class="evidence-btn" :href="itemActivo.fotografia_trabajo_url" target="_blank" rel="noopener">Ver evidencia ↗</a></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ---------- COLUMNA DERECHA: flujo de conformidad ---------- -->
-          <div class="informe-col-der">
-            <div v-if="!itemActivo" class="empty">
-              <span>📝</span>
-              <h3>Flujo de conformidad</h3>
-              <p>Los pasos de conformidad e informe final se mostrarán aquí al elegir un caso.</p>
-            </div>
-
-            <div v-else class="workflow-card">
-              <div class="wf-header">Revisión y cierre del informe</div><div v-if="itemActivo.estado_codigo==='INFORME_REGISTRADO' && !itemActivo.verificado_en" class="wf-body"><h4>Revisar informe y funcionamiento</h4><div class="actions"><button class="reject" @click="verificar(itemActivo,false)">No resuelto</button><button class="primary" @click="verificar(itemActivo,true)">Problema resuelto</button></div></div>
-              <div class="wf-body">
-                <div :class="['wf-step', itemActivo.estado_codigo === 'CONFORMIDAD_INFORMADA' ? 'completed' : 'active']">
-                  <div class="step-num">1</div>
-                  <div class="step-content">
-                    <h4>Confirmar conformidad <span v-if="itemActivo.estado_codigo === 'CONFORMIDAD_INFORMADA'" class="step-badge">✓ Completada</span></h4>
-                    <p v-if="itemActivo.estado_codigo !== 'CONFORMIDAD_INFORMADA'">Revise la reparación, las pruebas y el detalle del trabajo antes de confirmar la conformidad.</p>
-                    <p v-else>La conformidad fue registrada el {{ fecha(itemActivo.conformidad_en) }}. Ya puede elaborar el informe final.</p>
-                    <div v-if="itemActivo.estado_codigo !== 'CONFORMIDAD_INFORMADA'" class="step-actions"><button class="primary flex-btn" :disabled="procesando || !itemActivo.verificado_en" @click="conformar(itemActivo)">Confirmar y continuar</button></div>
-                  </div>
-                </div>
-
-                <div :class="['wf-step', itemActivo.estado_codigo !== 'CONFORMIDAD_INFORMADA' ? 'locked' : 'active']">
-                  <div class="step-num">2</div>
-                  <div class="step-content">
-                    <h4>Elaborar, validar y elevar informe final</h4>
-                    <p>Registre el cierre del caso. Al validarlo, el informe será enviado a la Dirección para su recepción.</p>
-                    <div v-if="itemActivo.estado_codigo === 'CONFORMIDAD_INFORMADA'">
-                      <label class="campo">Informe final<textarea v-model="formInforme.informe_final" rows="6" placeholder="Resuma el diagnóstico, trabajo realizado, componentes utilizados, pruebas y resultado final."></textarea></label>
-                      <div class="step-actions"><button class="primary flex-btn" :disabled="procesando || !formInforme.informe_final.trim()" @click="elaborarInforme">{{ procesando ? 'Validando...' : 'Validar y elevar a la Dirección' }}</button></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <div class="gestion-toolbar"><label><IconoSigta nombre="buscar" :tamano="17" /><input v-model="busquedaInforme" placeholder="Buscar informe por código, título o solicitante"></label><span>{{ informesFiltrados.length }} informe(s)</span></div>
+        <section class="panel"><div class="table-wrap"><table class="tabla-informes"><thead><tr><th>ID</th><th>Asunto</th><th>Solicitante</th><th>Técnico</th><th>Estado</th><th>Fecha</th><th></th></tr></thead><tbody><tr v-for="r in informesFiltrados" :key="r.id"><td><b>{{ r.codigo }}</b></td><td>{{ r.titulo }}</td><td>{{ r.solicitante_nombre }}</td><td>{{ r.auxiliar_asignado_nombre }}</td><td>{{ r.estado_nombre }}</td><td>{{ fecha(r.creado_en) }}</td><td><button class="sia-secondary" @click="abrirInforme(r)">Ver detalle</button></td></tr><tr v-if="!informesFiltrados.length"><td colspan="7" class="empty">No hay informes técnicos registrados.</td></tr></tbody></table></div></section>
       </section>
 
       <!-- ====================== REPORTE MENSUAL ====================== -->
@@ -493,6 +128,43 @@
         </div>
       </section>
     </main>
+    <ValidacionSolicitud v-if="validacionActiva" :registro="validacionActiva" :ocupado="procesando" :error="errorValidacion" @cerrar="validacionActiva = null" @validar="validar(validacionActiva)" @rechazar="rechazar(validacionActiva, $event)" />
+    <ExpedienteSolicitudModal v-if="expedienteAbierto && itemActivo" :registro="itemActivo" @cerrar="expedienteAbierto=false" @evidencia="abrirEvidencia">
+      <section v-if="itemActivo.estado_codigo==='RECIBIDO'" class="expediente-action"><h3>Validación del solicitante</h3><button class="sia-primary" :disabled="procesando" @click="validacionActiva=itemActivo">Validar requisitos</button></section>
+      <section v-else-if="itemActivo.estado_codigo==='VALIDADO' && !itemActivo.prioridad_jefatura" class="expediente-action">
+        <small>PASO 2</small><h3>Clasificar prioridad y SLA</h3>
+        <PrioridadSla v-model="formClasificar.prioridad" :opciones="prioridades" />
+        <label class="sia-field">Criterio técnico<textarea v-model="formClasificar.criterio_prioridad" rows="3" placeholder="Justifique la prioridad" /></label>
+        <div class="expediente-actions"><button class="sia-primary" :disabled="procesando || !formClasificar.prioridad || !formClasificar.criterio_prioridad.trim()" @click="clasificar">Guardar y continuar</button></div>
+      </section>
+      <section v-else-if="itemActivo.estado_codigo==='VALIDADO'" class="expediente-action">
+        <small>PASO 3</small><h3>Asignar técnico</h3>
+        <label class="sia-field">Técnico activo de Mantenimiento<select v-model="formDesignar.tecnico_id"><option value="">Seleccione…</option><option v-for="t in tecnicos" :key="t.id" :value="t.id">{{ t.nombre_completo || t.email }} · {{ casosActivos(t.id) }} casos activos</option></select></label>
+        <div class="expediente-actions"><button class="sia-primary" :disabled="procesando || !formDesignar.tecnico_id" @click="confirmarAsignacion=true">Asignar técnico</button></div>
+      </section>
+      <section v-if="cotizacionCompra" class="expediente-action">
+        <h3>Cotizaci&#243;n / proforma del t&#233;cnico</h3>
+        <div class="viabilidad-documentos"><article><i>CT</i><div><b>Proforma adjunta</b><small>Documento presentado por el t&#233;cnico de mantenimiento</small></div><button class="sia-primary" @click="abrirEvidencia(cotizacionCompra,'Proforma del tecnico')">Ver proforma</button></article></div>
+      </section>
+      <section v-if="itemActivo.estado_compra_componente==='SOLICITADA' || (itemActivo.estado_compra_componente==='VIABLE' && !itemActivo.derivado_compra) || itemActivo.compra_vinculada?.documentos_pendientes?.length" class="expediente-action">
+        <small>{{ compraValidada ? 'VIABILIDAD VALIDADA' : 'REQUERIMIENTO DE COMPRA RECIBIDO' }}</small><h3>{{ compraValidada ? 'Adjuntar POA y proveído' : 'Validar viabilidad' }}</h3><p v-if="compraValidada">Adjunte el POA y el proveído para completar el expediente y elevarlo a Compras.</p><p v-else>Revise la cotización y el informe técnico. Si la compra no es viable, registre el motivo: el técnico será informado y el caso se cerrará sin compra.</p>
+        <dl class="viabilidad-datos"><div><dt>Técnico</dt><dd>{{ itemActivo.auxiliar_asignado_nombre || 'Sin asignar' }}</dd></div><div><dt>Diagnóstico</dt><dd>{{ itemActivo.diagnostico }}</dd></div><div><dt>Componente / cantidad</dt><dd>{{ itemActivo.producto_requerido }} · {{ itemActivo.cantidad_requerida || 1 }}</dd></div><div><dt>Características</dt><dd>{{ itemActivo.especificacion_producto }}</dd></div><div><dt>Precio estimado</dt><dd>Bs. {{ itemActivo.costo_estimado || 'Sin especificar' }}</dd></div></dl>
+        <div class="viabilidad-documentos"><article><i>IT</i><div><b>Informe técnico de requerimiento</b><small>Generado automáticamente con el diagnóstico y el requerimiento del técnico</small></div><button class="sia-primary" @click="abrirEvidencia(`${base}/${itemActivo.id}/informe-requerimiento-pdf/`,'Informe técnico de requerimiento')">Visualizar</button></article></div>
+        <DecisionViabilidad v-model="decisionCompra" :validada="compraValidada" :ocupado="procesando" /><div v-if="compraValidada && decisionCompra==='si'" class="viabilidad-adjuntos"><label class="sia-field">POA<input type="file" accept=".pdf,.doc,.docx" @change="e=>formCompra.poa=e.target.files[0]"></label><label class="sia-field">Proveído de jefatura<input type="file" accept=".pdf,.doc,.docx" @change="e=>formCompra.pedido=e.target.files[0]"></label></div>
+        <div class="expediente-actions"><button class="sia-primary" :disabled="procesando || !decisionCompra" @click="confirmarCompra(decisionCompra==='si')">{{ decisionCompra==='no' ? 'Continuar: compra no viable' : compraValidada ? 'Elevar expediente a Compras' : 'Confirmar viabilidad' }}</button></div>
+      </section>
+      <section v-if="itemActivo.informe_trabajo" class="expediente-action">
+        <small>CIERRE TÉCNICO</small><h3>Informe del técnico de mantenimiento</h3><p class="informe-texto">{{ itemActivo.informe_trabajo }}</p>
+        <dl class="viabilidad-datos"><div><dt>Diagnóstico</dt><dd>{{ itemActivo.diagnostico }}</dd></div><div><dt>Trabajo realizado</dt><dd>{{ itemActivo.trabajo_realizado }}</dd></div><div><dt>Pruebas técnicas</dt><dd>{{ itemActivo.resultado_pruebas }}</dd></div></dl>
+        <div class="viabilidad-documentos"><article><i>PDF</i><div><b>Informe técnico del especialista</b><small>Documento con los datos y la firma registrada del técnico</small></div><button class="sia-primary" @click="visualizarInforme('Informe técnico de mantenimiento')">Abrir PDF</button></article><article v-if="itemActivo.fotografia_trabajo_url"><i>AN</i><div><b>Respaldo y cuadros técnicos</b><small>Adjunto registrado por el técnico</small></div><button class="sia-primary" @click="abrirEvidencia(itemActivo.fotografia_trabajo_url,'Respaldo y cuadros técnicos')">Visualizar</button></article></div>
+        <p v-if="itemActivo.conformidad_solicitante!==true">Pendiente de conformidad del solicitante.</p><p v-else><b>Solicitante conforme:</b> {{ fecha(itemActivo.conformidad_solicitante_en) }}</p>
+        <template v-if="itemActivo.conformidad_solicitante===true && ['INFORME_REGISTRADO','CONFORMIDAD_INFORMADA'].includes(itemActivo.estado_codigo)"><label class="sia-field">Informe final<textarea v-model="formInforme.informe_final" rows="5" placeholder="Registre el cierre del caso para Dirección"></textarea></label><div class="expediente-actions"><button class="sia-primary" :disabled="procesando || !formInforme.informe_final.trim()" @click="elaborarInforme">Validar y elevar informe</button></div></template>
+        <template v-if="itemActivo.informe_final"><h3>Informe final validado</h3><p class="informe-texto">{{ itemActivo.informe_final }}</p><button class="sia-primary" @click="visualizarInforme('Informe final de mantenimiento')">Ver informe final</button></template>
+      </section>
+    </ExpedienteSolicitudModal>
+    <div v-if="confirmacionCompra" class="asignacion-backdrop" @click.self="!procesando && (confirmacionCompra=null)"><section class="asignacion-confirm"><i>!</i><h3>{{ formCompra.viable ? (compraValidada ? 'Elevar expediente de compra' : 'Validar viabilidad de la compra') : 'Declarar compra no viable' }}</h3><p>{{ formCompra.viable ? (compraValidada ? 'Se elevará el expediente completo a la DAF.' : 'Se registrará la viabilidad y luego podrá adjuntar el POA y el proveído.') : 'El motivo será comunicado al técnico y el caso se cerrará sin compra.' }}</p><label v-if="!formCompra.viable" class="sia-field motivo-compra">Motivo de no viabilidad<textarea v-model="formCompra.motivo_no_viable" rows="4" placeholder="Explique por qué la compra no puede continuar…"></textarea></label><div class="expediente-actions"><button class="sia-secondary" :disabled="procesando" @click="confirmacionCompra=null">Cancelar</button><button class="sia-primary" :disabled="procesando || (!formCompra.viable && !formCompra.motivo_no_viable.trim())" @click="evaluarCompraUpload">Confirmar y notificar</button></div></section></div>
+    <div v-if="confirmarAsignacion" class="asignacion-backdrop" @click.self="!procesando && (confirmarAsignacion=false)"><section class="asignacion-confirm"><i>!</i><h3>Confirmar asignación</h3><p>Se asignará la revisión al técnico seleccionado.</p><div class="asignacion-persona"><b>Técnico</b><span>{{ tecnicos.find(t=>String(t.id)===String(formDesignar.tecnico_id))?.nombre_completo }}</span></div><div class="expediente-actions"><button class="sia-secondary" :disabled="procesando" @click="confirmarAsignacion=false">Cancelar</button><button class="sia-primary" :disabled="procesando" @click="designar">Confirmar</button></div></section></div>
+    <div v-if="visorEvidencia" class="mantenimiento-visor" @click.self="cerrarEvidencia"><section><header><button @click="cerrarEvidencia">← Volver al expediente</button><b>{{ visorTitulo }}</b><button aria-label="Cerrar" @click="cerrarEvidencia">×</button></header><div><img v-if="visorEsImagen" :src="visorEvidencia" alt="Evidencia del solicitante"><iframe v-else :src="visorEvidencia" title="Evidencia del solicitante" /></div></section></div>
 
     <!-- ============================ DETALLE ============================ -->
     <div v-if="detalle" class="detalle-modal-backdrop" @click.self="detalle=null">
@@ -516,6 +188,7 @@
           <div class="detalle-campo" v-if="detalle.diagnostico"><b>Diagnóstico</b><p>{{ detalle.diagnostico }}</p></div>
           <div class="detalle-campo" v-if="detalle.plan_solucion"><b>Plan de solución</b><p>{{ detalle.plan_solucion }}</p></div>
           <div class="detalle-campo" v-if="detalle.producto_requerido"><b>Componente requerido</b><p>{{ detalle.producto_requerido }} — Bs. {{ detalle.costo_estimado || 's/d' }}</p></div>
+          <div class="detalle-campo" v-if="proformaDe(detalle)"><b>Cotizaci&#243;n / proforma</b><button class="sia-primary" @click="abrirEvidencia(proformaDe(detalle),'Proforma del tecnico')">Ver proforma</button></div>
           <div class="detalle-campo" v-if="detalle.motivo_no_viable"><b>Compra no viable</b><p>{{ detalle.motivo_no_viable }}</p></div>
           <div class="detalle-campo" v-if="detalle.codigo_compra_vinculada"><b>Expediente de compra</b><span>{{ detalle.codigo_compra_vinculada }}</span></div>
           <div class="detalle-campo" v-if="detalle.trabajo_realizado"><b>Trabajo realizado</b><p>{{ detalle.trabajo_realizado }}</p></div>
@@ -530,6 +203,13 @@
 </template>
 
 <script setup>
+import { solicitarFirma } from '../utils/firma'
+import DocumentosExpediente from '../components/DocumentosExpediente.vue'
+import PrioridadSla from '../components/PrioridadSla.vue'
+import DecisionViabilidad from '../components/DecisionViabilidad.vue'
+import ExpedienteSolicitudModal from '../components/ExpedienteSolicitudModal.vue'
+import ValidacionSolicitud from '../components/ValidacionSolicitud.vue'
+import ResumenExpediente from '../components/ResumenExpediente.vue'
 import UsuarioHeader from '../components/UsuarioHeader.vue'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -540,7 +220,7 @@ import { usarGuardado } from '../utils/guardado.js'
 
 const router = useRouter()
 const usuario = ref(JSON.parse(localStorage.getItem('sigta_usuario') || '{}'))
-const vista = ref('resumen')
+const vista = ref('gestion')
 const menuAbierto = ref(false)
 const items = ref([])
 const tecnicos = ref([])
@@ -549,6 +229,8 @@ const procesando = ref(false)
 const errorCarga = ref('')
 const itemActivo = ref(null)
 const detalle = ref(null)
+const expedienteAbierto=ref(false), confirmarAsignacion=ref(false), visorEvidencia=ref(''), visorEsImagen=ref(false), visorTitulo=ref('EVIDENCIA DEL SOLICITANTE'), confirmacionCompra=ref(null)
+const prioridades=[{codigo:'BAJA',nombre:'Baja',horas:48},{codigo:'MEDIA',nombre:'Media',horas:24},{codigo:'ALTA',nombre:'Alta',horas:8},{codigo:'URGENTE',nombre:'Urgente',horas:4}]
 const reporte = ref(null)
 
 const nombre = computed(() => usuario.value.nombre || usuario.value.nombre_completo || 'Jefe de Mantenimiento')
@@ -560,7 +242,7 @@ const saludo = computed(() => new Date().getHours() < 12 ? 'Buenos días' : new 
 const porValidar = computed(() => items.value.filter(r => r.estado_codigo === 'RECIBIDO'))
 const porClasificar = computed(() => items.value.filter(r => r.estado_codigo === 'VALIDADO' && !r.prioridad_jefatura))
 const porDesignar = computed(() => items.value.filter(r => r.estado_codigo === 'VALIDADO' && !!r.prioridad_jefatura))
-const ticketsGestion = computed(() => [...porValidar.value, ...porClasificar.value, ...porDesignar.value])
+const ticketsGestion = computed(() => items.value.filter(r => ['RECIBIDO','VALIDADO','DERIVADO','EN_MANTENIMIENTO','EN_ESPERA_COMPRA','INFORME_REGISTRADO','CONFORMIDAD_INFORMADA'].includes(r.estado_codigo) && !r.informe_elevado_en))
 
 /* Búsqueda, filtro y paginación de la bandeja de "Gestión de tickets" */
 const busquedaTickets = ref('')
@@ -593,7 +275,7 @@ const ticketsPaginados = computed(() => {
 watch([busquedaTickets, filtroEstadoTickets], () => { paginaTickets.value = 1 })
 watch(totalPaginasTickets, (total) => { if (paginaTickets.value > total) paginaTickets.value = total })
 
-const porEvaluarCompra = computed(() => items.value.filter(r => (r.estado_compra_componente === 'SOLICITADA' || r.compra_vinculada?.documentos_pendientes?.length)))
+const porEvaluarCompra = computed(() => items.value.filter(r => (r.estado_compra_componente === 'SOLICITADA' || (r.estado_compra_componente==='VIABLE' && !r.derivado_compra) || r.compra_vinculada?.documentos_pendientes?.length)))
 const porVerificar = computed(() => items.value.filter(r => r.estado_codigo === 'INFORME_REGISTRADO' && !r.verificado_en))
 const porConformar = computed(() => items.value.filter(r => r.estado_codigo === 'INFORME_REGISTRADO' && !!r.verificado_en))
 const porInformar = computed(() => items.value.filter(r => r.estado_codigo === 'CONFORMIDAD_INFORMADA' && !r.informe_elevado_en))
@@ -619,12 +301,19 @@ const comprasFiltradas = computed(() => {
 
 const informesFiltrados = computed(() => {
   const texto = busquedaInforme.value.trim().toLowerCase()
-  if (!texto) return pendientesInforme.value
-  return pendientesInforme.value.filter(r =>
+  if (!texto) return items.value.filter(r=>!!r.informe_trabajo)
+  return items.value.filter(r=>!!r.informe_trabajo).filter(r =>
     [r.codigo, r.titulo, r.solicitante_nombre].some(v => (v || '').toLowerCase().includes(texto))
   )
 })
 
+const columnasGestion=computed(()=>[
+  {id:'validar',nombre:'Por validar',items:porValidar.value.filter(coincideBusqueda)},
+  {id:'gestionar',nombre:'Por gestionar',items:[...porClasificar.value,...porDesignar.value].filter(coincideBusqueda)},
+  {id:'atencion',nombre:'En atención',items:ticketsGestion.value.filter(r=>['DERIVADO','EN_MANTENIMIENTO','EN_ESPERA_COMPRA'].includes(r.estado_codigo)).filter(coincideBusqueda)},
+  {id:'cerrar',nombre:'Por cerrar',items:pendientesInforme.value.filter(coincideBusqueda)},
+])
+function coincideBusqueda(r){const q=busquedaTickets.value.trim().toLowerCase();return !q || `${r.codigo} ${r.titulo} ${r.solicitante_nombre}`.toLowerCase().includes(q)}
 const menu = computed(() => [
   { id: 'resumen', icono: 'inicio', nombre: 'Dashboard', color: '#F2C400' },
   { id: 'gestion', icono: 'tickets', nombre: 'Gestión de tickets', total: ticketsGestion.value.length, color: '#3E7BD6' },
@@ -698,7 +387,7 @@ async function postAccion(item, endpoint, body) {
     if ((vista.value === 'gestion' || vista.value === 'informe') && itemActivo.value) {
       const found = items.value.find(i => i.id === itemActivo.value.id);
       const permaneceEnGestion = vista.value === 'gestion'
-        && (found?.estado_codigo === 'RECIBIDO' || found?.estado_codigo === 'VALIDADO')
+        && ticketsGestion.value.some(r=>r.id===found?.id)
       const permaneceEnInforme = vista.value === 'informe'
         && ['INFORME_REGISTRADO','CONFORMIDAD_INFORMADA'].includes(found?.estado_codigo)
         && !found?.informe_elevado_en
@@ -708,8 +397,8 @@ async function postAccion(item, endpoint, body) {
       } else {
         itemActivo.value = null;
       }
-    } else {
-      itemActivo.value = null;
+    } else if(itemActivo.value) {
+      itemActivo.value=items.value.find(r=>r.id===itemActivo.value.id)||null;
     }
     
     return d
@@ -725,6 +414,7 @@ function irA(id) {
 }
 
 function abrir(item) {
+  decisionCompra.value = item.estado_compra_componente==='VIABLE'||item.compra_vinculada?'si':''
   itemActivo.value = item
   formClasificar.prioridad = ''
   formClasificar.criterio_prioridad = ''
@@ -738,7 +428,7 @@ function abrir(item) {
   formInforme.informe_final = ''
 }
 
-function verItem(item) { detalle.value = item }
+function verItem(item) { if(item.estado_compra_componente==='SOLICITADA' || (item.estado_compra_componente==='VIABLE' && !item.derivado_compra) || item.compra_vinculada?.documentos_pendientes?.length){abrirCompra(item);return} if(item.informe_trabajo){abrirInforme(item);return} if(['RECIBIDO','VALIDADO'].includes(item.estado_codigo)){abrir(item);expedienteAbierto.value=true}else detalle.value=item }
 
 function fecha(valor) {
   return valor ? new Date(valor).toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' }) : 's/d'
@@ -759,19 +449,23 @@ function confirmarSalida() {
 }
 
 /* Acciones del flujo */
+const validacionActiva = ref(null), errorValidacion = ref('')
+function casosActivos(id) { return items.value.filter(r => Number(r.auxiliar_asignado) === Number(id) && !['FINALIZADO','RECHAZADO'].includes(r.estado_codigo)).length }
 async function validar(item) {
   try {
     await postAccion(item, 'validar-ticket', { es_valido: true })
-    await animarGuardado('Ticket validado correctamente.')
+    validacionActiva.value = null
+    expedienteAbierto.value = true
   } catch (e) { await animarError(e.message) }
 }
 
-async function rechazar(item) {
-  const motivo = await window.sigtaPrompt('Indique el motivo del rechazo:')
+async function rechazar(item, motivo) {
   if (!motivo?.trim()) return
   try {
     await postAccion(item, 'validar-ticket', { es_valido: false, motivo_rechazo: motivo.trim() })
-    await animarGuardado('Ticket rechazado.')
+    validacionActiva.value = null
+    expedienteAbierto.value = false
+    await animarGuardado('Solicitud rechazada con motivo registrado.')
   } catch (e) { await animarError(e.message) }
 }
 
@@ -790,17 +484,28 @@ const formDesignar = reactive({ tecnico_id: '' })
 async function designar() {
   try {
     await postAccion(itemActivo.value, 'designar-revision', { tecnico_id: Number(formDesignar.tecnico_id) })
+    expedienteAbierto.value = false
+    confirmarAsignacion.value = false
     await animarGuardado('Técnico asignado correctamente.')
   } catch (e) { await animarError(e.message) }
 }
 
+const decisionCompra=ref('')
+const compraValidada=computed(()=>itemActivo.value?.estado_compra_componente==='VIABLE' || !!itemActivo.value?.compra_vinculada)
+const informeCompra=computed(()=>itemActivo.value?.informe_compra || itemActivo.value?.compra_vinculada?.informe)
+function proformaDe(item){return item?.cotizacion_archivo_url || item?.cotizacion_archivo || item?.compra_vinculada?.proforma}
+const cotizacionCompra=computed(()=>proformaDe(itemActivo.value))
+function abrirInforme(item){abrir(item);expedienteAbierto.value=true}
+async function visualizarInforme(tipo){try{const r=await fetch(`${base}/${itemActivo.value.id}/documentos/`,{headers:{Authorization:`Token ${token()}`}});if(!r.ok)throw new Error('No se pudieron consultar los informes.');const docs=await r.json();const doc=[...docs].reverse().find(d=>d.tipo===tipo);if(!doc)throw new Error('Este expediente antiguo no tiene un PDF registrado. Puede consultar el texto del informe y sus adjuntos.');await abrirEvidencia(`${base}/${itemActivo.value.id}/documentos/${doc.id}/pdf/`,tipo)}catch(e){await animarError(e.message)}}
+function abrirCompra(item){abrir(item);expedienteAbierto.value=true;confirmacionCompra.value=null}
+async function confirmarCompra(viable){formCompra.viable=viable;formCompra.motivo_no_viable='';if(viable && compraValidada.value && (!formCompra.poa || !formCompra.pedido)){await animarError('Adjunte el POA y el proveído para elevar el expediente. El informe técnico y la cotización se incorporan automáticamente.');return}confirmacionCompra.value=viable?'validar':'rechazar'}
 const formCompra = reactive({ viable: true, motivo_no_viable: '', informe: null, proforma: null, poa: null, pedido: null })
 
 async function evaluarCompraUpload() {
   procesando.value = true
   try {
-    if (formCompra.viable && (!formCompra.informe || !formCompra.poa || !formCompra.proforma || !formCompra.pedido)) {
-      throw new Error("Debe subir todos los documentos requeridos para aprobar.")
+    if (formCompra.viable && compraValidada.value && (!formCompra.poa || !formCompra.pedido)) {
+      throw new Error("Adjunte el POA y el proveído para elevar la compra.")
     }
 
     const fd = new FormData()
@@ -808,13 +513,13 @@ async function evaluarCompraUpload() {
     if (!formCompra.viable) fd.append("motivo_no_viable", formCompra.motivo_no_viable.trim())
     
     if (formCompra.viable) {
-      if (formCompra.informe instanceof File) fd.append("informe", formCompra.informe)
-      if (formCompra.proforma instanceof File) fd.append("proforma", formCompra.proforma)
-      fd.append("poa", formCompra.poa)
-      fd.append("pedido", formCompra.pedido)
+      if (formCompra.poa instanceof File) fd.append("poa", formCompra.poa)
+      if (formCompra.pedido instanceof File) fd.append("pedido", formCompra.pedido)
     }
 
-    const r = await fetch(`${base}/${itemActivo.value.id}/${itemActivo.value.compra_vinculada?.documentos_pendientes?.length ? "completar-expediente" : "evaluar-viabilidad-compra"}/`, {
+    const validandoViabilidad=formCompra.viable && !compraValidada.value
+    const id=itemActivo.value.id
+    const r = await fetch(`${base}/${id}/${validandoViabilidad ? "validar-viabilidad-compra" : formCompra.viable && itemActivo.value.compra_vinculada?.documentos_pendientes?.length ? "completar-expediente" : "evaluar-viabilidad-compra"}/`, {
       method: 'POST',
       headers: { Authorization: `Token ${token()}` },
       body: fd,
@@ -823,6 +528,9 @@ async function evaluarCompraUpload() {
     if (!r.ok) throw new Error(d.detalle || Object.values(d)[0] || 'No fue posible completar la acción.')
 
     await cargar()
+    confirmacionCompra.value=null
+    if(validandoViabilidad){itemActivo.value=items.value.find(r=>r.id===id);formCompra.informe=itemActivo.value?.informe_compra;formCompra.proforma=itemActivo.value?.cotizacion_archivo;await animarGuardado('Viabilidad validada. Ahora adjunte el POA y el proveído.');return}
+    expedienteAbierto.value=false
     await animarGuardado(d?.mensaje || 'Evaluación de compra registrada.')
     itemActivo.value = null
   } catch (e) { await animarError(e.message) }
@@ -839,21 +547,12 @@ async function evaluarCompra() {
   } catch (e) { alert(e.message) }
 }
 
-async function verificar(item, resuelto) {
-  try {
-    const d = await postAccion(item, 'verificar-funcionamiento', { problema_resuelto: resuelto })
-    await animarGuardado(d?.mensaje || 'Verificación registrada.')
-  } catch (e) { await animarError(e.message) }
-}
-
-async function conformar(item) {
-  try { await postAccion(item, 'informar-conformidad', {}) } catch (e) { await animarError(e.message) }
-}
-
 const formInforme = reactive({ informe_final: '' })
 async function elaborarInforme() {
+  const firma = await solicitarFirma('Informe final de mantenimiento', itemActivo.value.codigo)
+  if (!firma) return
   try {
-    await postAccion(itemActivo.value, 'elaborar-informe-final', { informe_final: formInforme.informe_final.trim() })
+    await postAccion(itemActivo.value, 'elaborar-informe-final', { informe_final: formInforme.informe_final.trim(), firma })
     await animarGuardado('Informe final validado y elevado a la Dirección.')
   } catch (e) { await animarError(e.message) }
 }
@@ -892,6 +591,8 @@ const reporteMaxDia = computed(() => Math.max(1, ...reportePorDia.value.map(d =>
 
 let intervaloActualizacion = null
 
+async function abrirEvidencia(url,titulo="Evidencia del solicitante"){try{const r=await fetch(url,{headers:{Authorization:`Token ${token()}`},cache:'no-store'});if(!r.ok)throw new Error('No se pudo visualizar la evidencia.');const archivo=await r.blob();cerrarEvidencia();visorEsImagen.value=archivo.type.startsWith('image/');visorEvidencia.value=URL.createObjectURL(archivo);visorTitulo.value=titulo.toUpperCase()}catch(e){await animarError(e.message)}}
+function cerrarEvidencia(){if(visorEvidencia.value)URL.revokeObjectURL(visorEvidencia.value);visorEvidencia.value=''}
 onMounted(() => {
   cargar()
   intervaloActualizacion = setInterval(cargar, 30000)
@@ -1237,4 +938,28 @@ textarea { width: 100%; border: 1px solid var(--sigta-borde); border-radius: 6px
 /* ---------- 6. RESPONSIVE: se respeta el apilado original ---------- */
 @media (max-width: 1050px) { .vista-compra { height: auto; flex-direction: column; } .vista-compra .compra-col-izq { width: 100%; min-width: 0; } .vista-compacta .gestion-left { width: 100%; min-width: 0; align-self: stretch; max-height: none; } .vista-gestion .gestion-col-izq { width: 100%; min-width: 0; } .vista-gestion .gestion-col-izq .gestion-left { max-height: none; } .vista-gestion .gestion-col-izq .ticket-header-card { overflow: visible; } .vista-informe { height: auto; flex-direction: column; } .vista-informe .informe-col-izq { width: 100%; min-width: 0; } .vista-informe .informe-col-izq .ticket-header-card { flex: none; overflow: visible; } }
 @media (max-width: 760px) { .vista-compra .desc-box { grid-template-columns: 1fr; } }
+</style>
+
+<style scoped>
+ .gestion-toolbar{display:flex;gap:14px;align-items:center;margin-bottom:18px}.gestion-toolbar label{display:flex;align-items:center;gap:10px;flex:1;background:#fff;border:1px solid #d6e1ed;padding:12px;border-radius:9px}.gestion-toolbar input{border:0;outline:0;width:100%;font:inherit}
+.gestion-kanban{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;align-items:start}
+.gestion-columna{--columna-color:#d9a514;border:1px solid #f0dfa8;border-top:4px solid var(--columna-color);border-radius:11px;padding:12px;background:#fdf6e0;min-width:0}
+.gestion-columna.gestionar{--columna-color:#2563a6;background:#e8f1fb;border-color:#c3d9f0;border-top-color:var(--columna-color)}
+.gestion-columna.atencion{--columna-color:#159071;background:#e3f7f0;border-color:#b9e6d4;border-top-color:var(--columna-color)}
+.gestion-columna.cerrar{--columna-color:#744aa4;background:#f1e9fa;border-color:#dcc7ef;border-top-color:var(--columna-color)}
+.gestion-columna-head{display:flex;align-items:center;justify-content:space-between;color:var(--sigta-azul);margin:4px 2px 14px;font-size:12px}.gestion-columna-head b{display:flex;align-items:center;gap:8px}.gestion-columna-head i{width:9px;height:9px;border-radius:50%;background:var(--columna-color)}.gestion-columna-head em{font-style:normal;background:white;padding:4px 9px;border-radius:12px}
+.gestion-ticket{background:white;border:1px solid #d6e1ed;border-top:3px solid var(--columna-color);border-radius:9px;padding:14px;margin-bottom:10px;transition:transform .15s,box-shadow .15s}.gestion-ticket:hover{transform:translateY(-2px);box-shadow:0 6px 16px #17324f18}.gestion-ticket:last-of-type{margin-bottom:0}.gestion-ticket-head{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12px}.gestion-ticket-head span{background:#eef4fb;padding:6px 10px;border-radius:14px;font-weight:700}.gestion-ticket h3{font-size:14px;margin:15px 0;overflow-wrap:anywhere}.gestion-ticket dl>div{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid #edf1f6;font-size:11px}.gestion-ticket dt{color:#64748b}.gestion-ticket dd{margin:0;text-align:right;overflow-wrap:anywhere}.gestion-ticket>button{width:100%;margin-top:12px;padding:9px;border:1px solid var(--sigta-azul);border-radius:7px;background:white;color:var(--sigta-azul);font-weight:800;cursor:pointer}.gestion-ticket>button:hover{background:var(--sigta-azul);color:white}.gestion-ticket>button:focus-visible{outline:2px solid var(--columna-color);outline-offset:3px}.gestion-columna>.empty-list{padding:20px 10px;margin:0;background:white;border:1px solid #d6e1ed;border-radius:9px;text-align:center;color:#64748b;font-size:12px}
+
+.expediente-action{margin-top:18px;background:#f6f9fd;border:1px solid #dce6f1;border-radius:10px;padding:18px}.expediente-action h3{margin:7px 0 15px;font-size:17px}.expediente-action>small{color:#64748b;font-size:10px;font-weight:800}.expediente-prioridades{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.expediente-prioridades button{border:1px solid #cbd9e8;background:#fff;border-radius:8px;padding:15px 10px;color:var(--sigta-azul);cursor:pointer}.expediente-prioridades b,.expediente-prioridades span{display:block}.expediente-prioridades span{margin-top:6px;font-size:12px;color:#64748b}.expediente-prioridades .selected{border-color:var(--sigta-azul);box-shadow:inset 0 0 0 1px var(--sigta-azul);background:#eaf2fc}.expediente-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:15px}
+.asignacion-backdrop{position:fixed;inset:0;z-index:1600;background:#082b4fcc;display:grid;place-items:center;padding:20px}.asignacion-confirm{width:min(470px,94vw);background:#fff;border-top:4px solid var(--sigta-mostaza);border-radius:13px;padding:25px;text-align:center}.asignacion-confirm>i{width:44px;height:44px;border-radius:50%;background:#fff2c8;color:#9b7100;display:grid;place-items:center;margin:auto;font-style:normal;font-size:22px;font-weight:900}.asignacion-confirm>p{color:#64748b}.asignacion-persona{display:flex;justify-content:space-between;gap:12px;margin-top:12px}
+.mantenimiento-visor{position:fixed;inset:0;z-index:1700;background:#082b4fcc;display:grid;place-items:center;padding:20px}.mantenimiento-visor>section{width:min(1100px,94vw);background:#fff;border-radius:14px;overflow:hidden}.mantenimiento-visor header{display:flex;justify-content:space-between;align-items:center;background:var(--sigta-azul);padding:16px;color:white}.mantenimiento-visor header button{border:1px solid #ffffff55;border-radius:7px;padding:9px;background:transparent;color:#fff;cursor:pointer}.mantenimiento-visor section>div{height:75vh;padding:16px;display:grid;place-items:center}.mantenimiento-visor img{max-width:100%;max-height:100%;object-fit:contain}.mantenimiento-visor iframe{width:100%;height:100%;border:0}
+@media(max-width:1150px){.gestion-kanban{grid-template-columns:1fr 1fr}}@media(max-width:650px){.gestion-kanban{grid-template-columns:1fr}.expediente-prioridades{grid-template-columns:1fr 1fr}.gestion-toolbar{flex-wrap:wrap}.mantenimiento-visor header>b{display:none}}
+</style>
+
+<style scoped>
+.viabilidad-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.viabilidad-cards>article{background:#fff;border:1px solid #d6e1ed;border-radius:10px;padding:18px}.viabilidad-cards h3{font-size:17px}.viabilidad-cards p{font-size:13px;color:#526a82}.viabilidad-datos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.viabilidad-datos dt{font-size:11px;color:#64748b}.viabilidad-datos dd{margin:6px 0 0;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}.viabilidad-documentos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}.viabilidad-documentos article{display:grid;grid-template-columns:42px 1fr auto;gap:12px;align-items:center;background:#fff;border:1px solid #d6e1ed;border-radius:10px;padding:13px}.viabilidad-documentos i{display:grid;place-items:center;width:42px;height:42px;background:#eef4fb;border-radius:9px;font-style:normal;font-size:11px;font-weight:800}.viabilidad-documentos b,.viabilidad-documentos small{display:block}.viabilidad-documentos small{margin-top:5px;color:#64748b}.viabilidad-adjuntos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.viabilidad-adjuntos .sia-field{padding:12px;border:1px dashed #b8c8da;border-radius:8px;background:#fff;margin:0}.no-viable{color:#b42318;border-color:#efb5b5;background:#fff7f7}.motivo-compra{text-align:left}@media(max-width:900px){.viabilidad-cards,.viabilidad-datos{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:760px){.viabilidad-cards,.viabilidad-datos,.viabilidad-documentos,.viabilidad-adjuntos{grid-template-columns:1fr}.viabilidad-documentos article{grid-template-columns:42px 1fr}.viabilidad-documentos button{grid-column:1/-1}}
+</style>
+
+<style scoped>
+.tabla-informes{width:100%;border-collapse:collapse}.tabla-informes th,.tabla-informes td{padding:13px;text-align:left;border-bottom:1px solid #e5edf5;font-size:13px}.tabla-informes th{color:#64748b;background:#f5f8fc;font-size:11px}.informe-texto{white-space:pre-wrap;line-height:1.6}.table-wrap{overflow:auto}
 </style>

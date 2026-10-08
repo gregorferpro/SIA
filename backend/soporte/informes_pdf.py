@@ -3,6 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 from textwrap import wrap
+from django.conf import settings
 
 AZUL = (0.071, 0.227, 0.420)
 AZUL_CLARO = (0.941, 0.965, 0.988)
@@ -88,8 +89,10 @@ def _datos_compra(ticket):
     return solicitud.get_estado_display(), monto
 
 
-def _documento_pdf(titulo, subtitulo, ticket, secciones, meta, compra=None):
+def _documento_pdf(titulo, subtitulo, ticket, secciones, meta, compra=None, firma=None, firmante=None, unidad=None, firmas=None, espaciado=False):
     paginas, pagina, y = [], [], 790
+    modulo = getattr(getattr(ticket, '_meta', None), 'app_label', '')
+    unidad = unidad or {'mantenimiento': 'MANTENIMIENTO', 'compras': 'COMPRAS Y ALMACÉN'}.get(modulo, 'UNIDAD DE TECNOLOGÍAS DE INFORMACIÓN Y COMUNICACIÓN')
 
     def color(rgb, trazo=False):
         pagina.append(f"{rgb[0]} {rgb[1]} {rgb[2]} {'RG' if trazo else 'rg'}")
@@ -111,9 +114,9 @@ def _documento_pdf(titulo, subtitulo, ticket, secciones, meta, compra=None):
         rect(42, 756, 511, 58, AZUL)
         rect(51, 766, 45, 38, (1, 1, 1))
         pagina.append("q 43 0 0 36 52 767 cm /Logo Do Q")
-        texto(112, 796, "ESCUELA MILITAR DE INGENIERÍA", 11, True, (1, 1, 1))
-        texto(112, 781, "MCAL. ANTONIO JOSÉ DE SUCRE  ·  BOLIVIA", 7.5, False, (1, 1, 1))
-        texto(112, 768, "UNIDAD DE TECNOLOGÍAS DE INFORMACIÓN Y COMUNICACIÓN", 7.5, False, AMARILLO)
+        texto(112, 796, getattr(settings, 'SIA_INSTITUCION', 'ESCUELA MILITAR DE INGENIERÍA'), 11, True, (1, 1, 1))
+        texto(112, 781, getattr(settings, 'SIA_SUBTITULO_INSTITUCION', 'MCAL. ANTONIO JOSÉ DE SUCRE  ·  BOLIVIA'), 7.5, False, (1, 1, 1))
+        texto(112, 768, unidad, 7.5, False, AMARILLO)
         y = 735
         nombre = titulo + (" · CONTINUACIÓN" if continuacion else "")
         texto(max(55, 297 - len(nombre) * 3.7), y, nombre, 15, True, AZUL)
@@ -132,7 +135,7 @@ def _documento_pdf(titulo, subtitulo, ticket, secciones, meta, compra=None):
 
     def bloque_titulo(etiqueta):
         nonlocal y
-        asegurar(32)
+        asegurar(80 if espaciado else 32)
         rect(42, y - 19, 511, 23, AZUL_CLARO, BORDE)
         rect(42, y - 19, 5, 23, AMARILLO)
         texto(54, y - 11, etiqueta, 9, True, AZUL)
@@ -141,11 +144,12 @@ def _documento_pdf(titulo, subtitulo, ticket, secciones, meta, compra=None):
     def campo(etiqueta, valor):
         nonlocal y
         lineas = _lineas(valor)
-        alto = 20 + max(0, len(lineas) - 1) * 12
+        paso = 16 if espaciado else 12
+        alto = (32 if espaciado else 20) + max(0, len(lineas) - 1) * paso
         asegurar(alto + 7)
         texto(49, y, etiqueta.upper(), 7, True, GRIS)
         for indice, linea in enumerate(lineas):
-            texto(49, y - 12 - indice * 12, linea, 9)
+            texto(49, y - paso - indice * paso, linea, 9)
         y -= alto
         color(BORDE, True)
         pagina.append(f"49 {y + 5} m 546 {y + 5} l S")
@@ -167,15 +171,35 @@ def _documento_pdf(titulo, subtitulo, ticket, secciones, meta, compra=None):
         bloque_titulo("ANEXO · REQUERIMIENTO DE COMPRA")
         for etiqueta, valor in compra:
             campo(etiqueta, valor)
-    asegurar(105)
-    y -= 35
-    color(AZUL, True)
-    pagina.extend([f"80 {y} m 250 {y} l S", f"345 {y} m 515 {y} l S"])
-    texto(122, y - 16, "Elaborado por", 8, True, AZUL)
-    texto(376, y - 16, "Validado por", 8, True, AZUL)
-    texto(95, y - 29, _nombre(getattr(ticket, "tecnico_asignado", None)), 7.5, False, GRIS)
-    texto(372, y - 29, "Jefatura UTIC", 7.5, False, GRIS)
+    firmas = list(firmas or [])
+    if firma:
+        firmas.append((firma, firmante, 'Firma electrónica manuscrita'))
+    for inicio in range(0, len(firmas), 2):
+        asegurar(150)
+        for columna, (trazos, nombre, cargo) in enumerate(firmas[inicio:inicio + 2]):
+            x_base = 80 if len(firmas) == 1 else 55 + columna * 255
+            escala = .45 if len(firmas) == 1 else .37
+            color(AZUL, True)
+            pagina.append('1.3 w')
+            for trazo in trazos:
+                puntos = [(x_base + x * escala, y - 95 + (200 - yy) * .35) for x, yy in trazo]
+                pagina.append(f'{puntos[0][0]:.2f} {puntos[0][1]:.2f} m')
+                pagina.extend(f'{x:.2f} {yy:.2f} l' for x, yy in puntos[1:])
+                pagina.append('S')
+            pagina.append(f'{x_base} {y - 102} m {x_base + 220} {y - 102} l S')
+            texto(x_base, y - 116, cargo, 8, True, AZUL)
+            for indice, linea in enumerate(_lineas(nombre, 42)):
+                texto(x_base, y - 130 - indice * 11, linea, 8, False, GRIS)
+        y -= 150
+    if not firmas:
+        asegurar(105)
+        texto(49, y - 15, 'Emisión registrada en SIA; firmas disponibles en el expediente cuando correspondan.', 8, False, GRIS)
+    # Las firmas guardadas se dibujan únicamente cuando pertenecen a este documento.
     paginas.append(pagina.copy())
+    return _serializar_paginas(paginas, ticket)
+
+
+def _serializar_paginas(paginas, ticket):
 
     objetos = []
     def agregar(contenido):
@@ -225,7 +249,12 @@ def informe_requerimiento(ticket):
     ])
 
 
-def informe_final_jefatura(ticket, informe_final):
+def informe_final_jefatura(ticket, informe_final, firma=None, firmante=None):
+    from usuarios.models import DocumentoProceso
+    tecnico = DocumentoProceso.objects.filter(soporte=ticket, tipo='Informe técnico de soporte', usuario_id=ticket.tecnico_asignado_id).exclude(firma=[]).order_by('-creado_en', '-pk').first()
+    firmas = [(tecnico.firma, tecnico.nombre_firmante, 'Firma del técnico responsable')] if tecnico else []
+    if firma:
+        firmas.append((firma, firmante, 'Firma del jefe de UTIC'))
     compra = None
     if ticket.requiere_compra:
         datos_compra = _datos_compra(ticket)
@@ -240,15 +269,15 @@ def informe_final_jefatura(ticket, informe_final):
         ("INTERVENCIÓN Y PRUEBAS", [("Intervención realizada", ticket.solucion), ("Resultado de pruebas", ticket.resultado_pruebas), ("Conclusión del técnico", ticket.informe_tecnico)]),
         ("CONFORMIDAD DEL SOLICITANTE", [("Resultado", "Conforme" if ticket.conformidad_usuario else "No conforme"), ("Observaciones", ticket.observaciones_usuario)]),
         ("VALIDACIÓN DE JEFATURA UTIC", [("Informe final", informe_final)]),
-    ], [("Nro. de informe", f"INF-TEC-{ticket.codigo}"), ("Fecha de emisión", _fecha(getattr(ticket, "cerrado_en", None))), ("Código de ticket", ticket.codigo), ("Gestión", datetime.now().year)], compra)
+    ], [("Nro. de informe", f"INF-TEC-{ticket.codigo}"), ("Fecha de emisión", _fecha(getattr(ticket, "cerrado_en", None))), ("Código de ticket", ticket.codigo), ("Gestión", datetime.now().year)], compra, firmas=firmas, espaciado=True)
 
 
-def informe_tecnico(ticket, texto_informe):
+def informe_tecnico(ticket, texto_informe, firma=None, firmante=None):
     return _documento_pdf("INFORME TÉCNICO DE ATENCIÓN", "Diagnóstico, intervención y pruebas", ticket, [
         ("DATOS DE LA ORDEN", [("Asunto", ticket.titulo), ("Solicitante", _nombre(ticket.solicitante)), ("Ubicación", ticket.ubicacion), ("Equipo", ticket.equipo_afectado)]),
         ("EVALUACIÓN", [("Diagnóstico", ticket.diagnostico), ("Plan de solución", ticket.plan_solucion)]),
         ("TRABAJO REALIZADO", [("Intervención", ticket.solucion), ("Resultado de pruebas", ticket.resultado_pruebas), ("Conclusión técnica", texto_informe)]),
-    ], [("Código", ticket.codigo), ("Fecha de emisión", _fecha()), ("Técnico responsable", _nombre(ticket.tecnico_asignado)), ("Gestión", datetime.now().year)])
+    ], [("Código", ticket.codigo), ("Fecha de emisión", _fecha()), ("Técnico responsable", _nombre(ticket.tecnico_asignado)), ("Gestión", datetime.now().year)], firmas=[(firma, firmante, 'Firma del técnico responsable')] if firma else [])
 
 
 def informe_jefe_carrera(ticket, contenido):

@@ -69,6 +69,28 @@ class Usuario(AbstractUser):
 # ÁREA
 # ==========================================================
 
+class DocumentoProceso(models.Model):
+    """Instantánea de un documento emitido; no admite edición por API."""
+    compra = models.ForeignKey('compras.SolicitudCompra', on_delete=models.PROTECT, null=True, blank=True, related_name='documentos_sia')
+    mantenimiento = models.ForeignKey('mantenimiento.RequerimientoMantenimiento', on_delete=models.PROTECT, null=True, blank=True, related_name='documentos_sia')
+    soporte = models.ForeignKey('soporte.Ticket', on_delete=models.PROTECT, null=True, blank=True, related_name='documentos_sia')
+    tipo = models.CharField(max_length=80)
+    codigo_expediente = models.CharField(max_length=30)
+    contenido = models.JSONField(default=dict)
+    firma = models.JSONField(default=list)
+    usuario = models.ForeignKey('usuarios.Usuario', on_delete=models.PROTECT)
+    nombre_firmante = models.CharField(max_length=200)
+    roles_firmante = models.JSONField(default=list)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(
+            condition=(models.Q(compra__isnull=False, mantenimiento__isnull=True, soporte__isnull=True)
+                       | models.Q(compra__isnull=True, mantenimiento__isnull=False, soporte__isnull=True)
+                       | models.Q(compra__isnull=True, mantenimiento__isnull=True, soporte__isnull=False)),
+            name='documento_un_expediente')]
+
+
 class Area(models.Model):
 
     codigo = models.CharField(

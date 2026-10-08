@@ -239,6 +239,8 @@
         </div>
 
         <div class="documento-body" @scroll="onModalScroll">
+      <ResumenExpediente v-if="compraSeleccionada" :registro="compraSeleccionada" requerimiento />
+      <CotizacionesCompra v-if="compraSeleccionada" :id="compraSeleccionada.id" :editable="false" />
 
           <div
             :class="['estado-banner', claseBucket(bucketEstado(compraSeleccionada?.estado))]"
@@ -653,10 +655,23 @@
     </div>
 
   </div>
+    <ModalSia v-if="rechazoPendiente" titulo="¿Está seguro de rechazar esta solicitud?" :ocupado="procesando" @cerrar="rechazoPendiente=null">
+      <div class="daf-confirmacion-rechazo">
+        <p>Se rechazará el expediente <strong>{{ rechazoPendiente.codigo }}</strong> y el motivo quedará registrado.</p>
+        <div class="daf-motivo-confirmado"><small>Motivo del rechazo</small><p>{{ rechazoPendiente.motivo }}</p></div>
+        <p>Revise el motivo antes de confirmar.</p>
+        <p v-if="errorAccion" class="daf-confirmacion-error" role="alert">{{ errorAccion }}</p>
+      </div>
+      <template #acciones><button class="sia-secondary" :disabled="procesando" @click="rechazoPendiente=null">Volver sin rechazar</button><button class="daf-confirmar-rechazo" :disabled="procesando" @click="ejecutarRechazoConfirmado">{{ procesando ? 'Rechazando…' : 'Sí, rechazar solicitud' }}</button></template>
+    </ModalSia>
 </template>
 
 
 <script setup>
+import ModalSia from '../components/ModalSia.vue'
+
+import CotizacionesCompra from '../components/CotizacionesCompra.vue'
+import ResumenExpediente from '../components/ResumenExpediente.vue'
 import UsuarioHeader from '../components/UsuarioHeader.vue'
 import IconoSigta from '../components/IconoSigta.vue'
 
@@ -680,6 +695,8 @@ import TarjetaGuardado
 
 import { usarGuardado }
   from '../utils/guardado.js'
+
+const rechazoPendiente = ref(null)
 
 
 const router =
@@ -980,6 +997,8 @@ async function aprobarDesdeLista(
 
 function cerrarDetalle() {
 
+  rechazoPendiente.value = null
+
   mostrarDetalle.value =
     false
 
@@ -1243,7 +1262,7 @@ async function confirmarRechazo() {
   }
 
   if (
-    compraSeleccionada.value.estado
+    compraSeleccionada.value?.estado
     !== 'CREADO_PENDIENTE_DAF'
   ) {
 
@@ -1253,13 +1272,25 @@ async function confirmarRechazo() {
     return
   }
 
+  errorAccion.value = ''
+  rechazoPendiente.value = { id: compraSeleccionada.value.id, codigo: compraSeleccionada.value.codigo, motivo }
+}
+
+async function ejecutarRechazoConfirmado() {
+  const pendiente = rechazoPendiente.value
+  if (procesando.value || !pendiente) return
+  if (compraSeleccionada.value?.id !== pendiente.id || compraSeleccionada.value?.estado !== 'CREADO_PENDIENTE_DAF') {
+    rechazoPendiente.value = null
+    return
+  }
   await ejecutarAccion(
     'evaluar-daf',
-    { califica: false, motivo },
+    { califica: false, motivo: pendiente.motivo },
     'rechazar',
     false,
     'Solicitud rechazada.'
   )
+  if (!errorAccion.value) rechazoPendiente.value = null
 }
 
 
@@ -1328,6 +1359,7 @@ async function ejecutarAccion(
 
     cerrarDetalle()
 
+    window.dispatchEvent(new Event('sia-certificaciones-actualizadas'))
     await cargarCompras()
 
     await animarGuardado(
@@ -2648,4 +2680,12 @@ function cerrarSesion() {
 
 }
 
+</style>
+
+<style scoped>
+.documento-columnas { grid-template-columns:1fr; }.search-box,.buscador { width:100%;max-width:none; }
+</style>
+
+<style scoped>
+.daf-confirmacion-rechazo{font-size:14px;line-height:1.7}.daf-motivo-confirmado{padding:16px 18px;border-radius:9px;background:#f7f9fc;border:1px solid var(--sigta-borde);margin:18px 0}.daf-motivo-confirmado small{display:block;color:var(--sigta-texto-suave);font-weight:700}.daf-motivo-confirmado p{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 0}.daf-confirmar-rechazo{border:0;border-radius:8px;padding:11px 16px;background:var(--sigta-error);color:white;font:inherit;font-weight:700;cursor:pointer}.daf-confirmar-rechazo:disabled{opacity:.6;cursor:wait}.daf-confirmacion-error{color:var(--sigta-error)}
 </style>

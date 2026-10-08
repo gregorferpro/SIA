@@ -1,3 +1,4 @@
+from usuarios.documentos import documentar, documentos_expediente, pdf_documento
 from rest_framework import (
     status,
     viewsets,
@@ -159,6 +160,86 @@ class SolicitudCompraViewSet(
     viewsets.ModelViewSet
 ):
 
+    @action(detail=True, methods=['get', 'post'], url_path='actas-almacen')
+    def actas_almacen(self, request, pk=None):
+        from .actas_almacen import actas
+        return actas(self, request)
+
+    @action(detail=True, methods=['get'], url_path=r'actas-almacen/(?P<acta_id>[0-9]+)/(?P<clase>original|firmado)')
+    def archivo_acta_almacen(self, request, pk=None, acta_id=None, clase=None):
+        from .actas_almacen import archivo_acta
+        return archivo_acta(self, request, acta_id, clase)
+
+    @action(detail=True, methods=['get', 'post'], url_path='recibos-tesoreria')
+    def recibos_tesoreria(self, request, pk=None):
+        from .tesoreria import recibos
+        return recibos(self, request)
+
+    @action(detail=True, methods=['get'], url_path=r'recibos-tesoreria/(?P<recibo_id>[0-9]+)/(?P<clase>original|firmado|comprobante)')
+    def archivo_recibo_tesoreria(self, request, pk=None, recibo_id=None, clase=None):
+        from .tesoreria import archivo_recibo
+        return archivo_recibo(self, request, recibo_id, clase)
+
+    @action(detail=True, methods=['get'], url_path='documentos')
+    def documentos(self, request, pk=None):
+        return documentos_expediente(self, request, pk)
+
+    @action(detail=True, methods=['get'], url_path=r'documentos/(?P<documento_id>[0-9]+)/pdf')
+    def documento_pdf(self, request, pk=None, documento_id=None):
+        return pdf_documento(self, request, pk, documento_id)
+
+    @action(detail=True, methods=['get'], url_path=r'cotizaciones/(?P<cotizacion_id>[0-9]+)/archivo')
+    def archivo_cotizacion(self, request, pk=None, cotizacion_id=None):
+        from django.http import FileResponse
+        from django.shortcuts import get_object_or_404
+        solicitud = self.get_object()
+        cotizacion = get_object_or_404(solicitud.cotizaciones, pk=cotizacion_id)
+        respuesta = FileResponse(cotizacion.documento.open('rb'), as_attachment=True)
+        respuesta['Cache-Control'] = 'private, no-store'
+        respuesta['X-Content-Type-Options'] = 'nosniff'
+        return respuesta
+
+    @action(detail=True, methods=['get', 'post'], url_path='cotizaciones')
+    def cotizaciones(self, request, pk=None):
+        from .cotizaciones import CotizacionCompraSerializer
+        solicitud = self.get_object()
+        if request.method == 'GET':
+            return Response(CotizacionCompraSerializer(solicitud.cotizaciones.order_by('creado_en'), many=True, context={'request': request}).data)
+        if not es_admin(request.user):
+            return Response({'detalle': 'No tiene permiso para registrar cotizaciones.'}, status=403)
+        if solicitud.estado not in {'CREADO_PENDIENTE_DAF', 'EVALUADO_PENDIENTE_CERTIFICACION', 'FONDOS_DESEMBOLSADOS'}:
+            return Response({'detalle': 'La etapa actual no permite registrar cotizaciones.'}, status=409)
+        serializer = CotizacionCompraSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            type(solicitud).objects.select_for_update().get(pk=solicitud.pk)
+            serializer.save(solicitud=solicitud, creada_por=request.user)
+            registrar_bitacora(request=request, accion='REGISTRAR_COTIZACION', modulo='Compras', detalle=f'{solicitud.codigo}: cotización {serializer.instance.pk} registrada.', nivel='INFO')
+        return Response(serializer.data, status=201)
+
+    @action(detail=True, methods=['post'], url_path='seleccionar-cotizacion')
+    @transaction.atomic
+    def seleccionar_cotizacion(self, request, pk=None):
+        from .models import CotizacionCompra
+        solicitud = self.get_object()
+        solicitud = type(solicitud).objects.select_for_update().get(pk=solicitud.pk)
+        if not (tiene_permiso(request.user, 'REALIZAR_COMPRA') or tiene_permiso(request.user, 'EVALUAR_EXPEDIENTE')):
+            return Response({'detalle': 'No tiene permiso para seleccionar cotizaciones.'}, status=403)
+        if solicitud.estado not in {'CREADO_PENDIENTE_DAF', 'EVALUADO_PENDIENTE_CERTIFICACION', 'FONDOS_DESEMBOLSADOS'}:
+            return Response({'detalle': 'La etapa actual no permite cambiar la cotización.'}, status=409)
+        try:
+            cotizacion = solicitud.cotizaciones.get(pk=request.data.get('cotizacion_id'))
+        except (CotizacionCompra.DoesNotExist, ValueError, TypeError):
+            return Response({'detalle': 'Seleccione una cotización de este expediente.'}, status=400)
+        motivo = str(request.data.get('motivo', '')).strip()
+        if not motivo:
+            return Response({'detalle': 'Registre el motivo de selección.'}, status=400)
+        solicitud.cotizaciones.filter(seleccionada=True).update(seleccionada=False)
+        cotizacion.seleccionada = True
+        cotizacion.save(update_fields=['seleccionada'])
+        registrar_bitacora(request=request, accion='SELECCIONAR_COTIZACION', modulo='Compras', detalle=f'{solicitud.codigo}: cotización {cotizacion.pk}. Motivo: {motivo}', nivel='INFO')
+        return Response({'detalle': 'Cotización seleccionada por el responsable autorizado.'})
+
     serializer_class = (
         SolicitudCompraSerializer
     )
@@ -193,6 +274,15 @@ class SolicitudCompraViewSet(
         )
 
 
+        if self.action == 'list' and self.request.query_params.get('tesoreria') == '1' and tiene_permiso(usuario, 'REGISTRAR_DESEMBOLSO'):
+            from django.db.models import OuterRef, Subquery
+            from django.db.models.functions import Coalesce
+            from usuarios.models import DocumentoProceso
+            from .models import ReciboTesoreria
+            recibo = ReciboTesoreria.objects.filter(solicitud_id=OuterRef('pk'), confirmado_en__isnull=False).order_by('-confirmado_en')
+            constancia = DocumentoProceso.objects.filter(compra_id=OuterRef('pk'), tipo='Constancia de desembolso').order_by('-creado_en')
+            queryset = queryset.annotate(tesoreria_fecha=Coalesce(Subquery(recibo.values('confirmado_en')[:1]), Subquery(constancia.values('creado_en')[:1])))
+
         if self.action == "list" and self.request.query_params.get("bandeja") == "certificacion":
             queryset = queryset.filter(estado="EVALUADO_PENDIENTE_CERTIFICACION")
             for campo in ("informe", "proforma", "poa"):
@@ -210,6 +300,11 @@ class SolicitudCompraViewSet(
         if tiene_permiso(usuario, "VER_COMPRAS"):
             return queryset
 
+
+        # Lectura del acta y su expediente por el tecnico receptor.
+        if self.request.method == 'GET' and self.action in ('actas_almacen', 'archivo_acta_almacen', 'retrieve'):
+            from django.db.models import Q
+            return queryset.filter(Q(solicitante=usuario) | Q(ticket_soporte__tecnico_asignado=usuario) | Q(requerimiento_mantenimiento__auxiliar_asignado=usuario))
 
         # SOLICITANTE VE LOS SUYOS
         return queryset.filter(
@@ -579,33 +674,13 @@ class SolicitudCompraViewSet(
         return Response(self.get_serializer(solicitud).data)
 
     @action(detail=True, methods=["post"], url_path="desembolsar")
+    @documentar('Constancia de desembolso')
     def desembolsar(self, request, pk=None):
-        s = self.get_object()
-        if not tiene_permiso(request.user, "REGISTRAR_DESEMBOLSO"):
-            return respuesta_sin_permiso("REGISTRAR_DESEMBOLSO")
-        if s.estado != "APROBADO_PARA_DESEMBOLSO":
-            return Response({"detalle": "El expediente no está aprobado para desembolso."}, status=409)
-        try:
-            monto_raw = request.data.get("monto_desembolsado", "")
-            monto = Decimal(str(monto_raw)) if monto_raw else None
-        except InvalidOperation: 
-            return Response({"detalle": "Monto de desembolso inválido."}, status=400)
-            
-        tipo = str(request.data.get("tipo_desembolso", "")).strip()
-        comprobante = request.FILES.get("comprobante_desembolso")
-        responsable = str(request.data.get("responsable_adquisicion", "")).strip()
-        
-        if not tipo or not comprobante or not responsable:
-            return Response({"detalle": "Debe registrar el tipo, comprobante y responsable."}, status=400)
-            
-        s.monto_desembolsado = monto
-        s.responsable_adquisicion = responsable
-        s.tipo_desembolso = tipo
-        s.comprobante_desembolso = comprobante
-        s.save(update_fields=["monto_desembolsado", "responsable_adquisicion", "tipo_desembolso", "comprobante_desembolso", "actualizado_en"])
-        return self._transicion(request, s, "REGISTRAR_DESEMBOLSO", ["APROBADO_PARA_DESEMBOLSO"], "FONDOS_DESEMBOLSADOS", "DESEMBOLSAR_FONDOS", "Tesorería registró la entrega de fondos.")
+        from .tesoreria import confirmar
+        return confirmar(self, request)
 
     @action(detail=True, methods=["post"], url_path="confirmar-recepcion-fondos")
+    @documentar('Recepción de fondos', firma_obligatoria=True)
     def confirmar_recepcion_fondos(self, request, pk=None):
         """Tesorería entrega el efectivo, pero el dinero lo retira una
         persona. Este acuse deja constancia de quién lo recibió y cuándo:
@@ -626,7 +701,7 @@ class SolicitudCompraViewSet(
         if s.fondos_recibidos_en:
             return Response({"detalle": "La recepción de fondos ya fue confirmada."}, status=409)
 
-        quien = str(request.data.get("fondos_recibidos_por", "")).strip()
+        quien = request.user.nombre_completo
 
         if not quien:
             quien = request.user.nombre_completo
@@ -742,6 +817,7 @@ class SolicitudCompraViewSet(
         return self._transicion(request, s, "REALIZAR_COMPRA", ["FONDOS_DESEMBOLSADOS"], "COMPRA_REGISTRADA", "REGISTRAR_COMPRA", "Compra física registrada y componentes verificados.")
 
     @action(detail=True, methods=["post"], url_path="registrar-ingreso-almacen")
+    @documentar('Constancia de ingreso a almacén')
     def registrar_ingreso_almacen(self, request, pk=None):
         s = self.get_object()
         if not tiene_permiso(request.user, "REGISTRAR_ENTRADA_SALIDA_ALMACEN"):
@@ -806,6 +882,7 @@ class SolicitudCompraViewSet(
         return Response(self.get_serializer(s).data)
 
     @action(detail=True, methods=["post"], url_path="registrar-despacho-almacen")
+    @documentar('Constancia de salida de almacén')
     def registrar_despacho_almacen(self, request, pk=None):
         s = self.get_object()
         if not tiene_permiso(request.user, "ENTREGAR_PRODUCTO"):
@@ -842,6 +919,13 @@ class SolicitudCompraViewSet(
 
         destinatario = str(request.data.get("entregado_a", "")).strip()
 
+        if s.ticket_soporte_id or s.requerimiento_mantenimiento_id:
+            from .actas_almacen import receptor_acta
+            receptor = receptor_acta(s)
+            if not receptor:
+                return Response({'detalle': 'Asigne el tecnico que recibira el producto.'}, status=409)
+            destinatario = receptor.nombre_completo
+
         if not destinatario:
             return Response(
                 {"entregado_a": "Indique a quién se entrega el producto."},
@@ -869,6 +953,7 @@ class SolicitudCompraViewSet(
         return Response(self.get_serializer(s).data)
 
     @action(detail=True, methods=["post"], url_path="entregar-con-acta")
+    @documentar('Constancia de entrega de producto')
     def entregar_con_acta(self, request, pk=None):
         """BPMN: "Entregar la solicitud con un acta de conformidad".
         El bien sale del almacén y se entrega formalmente al solicitante
@@ -885,14 +970,10 @@ class SolicitudCompraViewSet(
         if not s.fecha_despacho_almacen:
             return Response({"detalle": "Debe registrar primero la salida de almacén."}, status=409)
 
-        acta = request.FILES.get("acta_conformidad")
-
-        if not acta:
-            return Response({"detalle": "Debe adjuntar el acta de conformidad de la entrega."}, status=400)
-
-        s.acta_conformidad = acta
+        from .actas_almacen import guardar_firmada
+        guardar_firmada(request, s)
         s.fecha_entrega_solicitante = timezone.now()
-        s.save(update_fields=["acta_conformidad", "fecha_entrega_solicitante", "actualizado_en"])
+        s.save(update_fields=["acta_conformidad", "acta_firmada_en", "fecha_entrega_solicitante", "actualizado_en"])
 
         # Si el expediente nació de un ticket de Soporte, la entrega física
         # del componente es lo que reanuda la atención técnica: hasta aquí
@@ -947,15 +1028,20 @@ class SolicitudCompraViewSet(
                 nivel="INFO",
             )
 
-        return self._transicion(request, s, "ENTREGAR_PRODUCTO", ["COMPRA_REGISTRADA"], "COMPRADO_Y_ENTREGADO", "ENTREGAR_CON_ACTA", "Bien entregado a la sección solicitante con acta de conformidad.")
+        destino = "DESCARGO_PENDIENTE_LIQUIDACION" if s.ticket_soporte_id or s.requerimiento_mantenimiento_id else "COMPRADO_Y_ENTREGADO"
+        return self._transicion(request, s, "ENTREGAR_PRODUCTO", ["COMPRA_REGISTRADA"], destino, "ENTREGAR_CON_ACTA", "Bien entregado a la sección solicitante con acta de conformidad.")
 
     @action(detail=True, methods=["post"], url_path="firmar-acta")
+    @documentar('Acta de conformidad y recepción', firma_obligatoria=True)
     def firmar_acta(self, request, pk=None):
         """BPMN: "Firmar acta de conformidad". La sección solicitante
         revisa la entrega y firma el acta como constancia de que recibió
         el bien conforme."""
 
         s = self.get_object()
+
+        if s.ticket_soporte_id or s.requerimiento_mantenimiento_id:
+            return Response({'detalle': 'El acta la firman el encargado de almacen y el tecnico receptor durante la entrega del producto.'}, status=409)
 
         if s.solicitante_id != request.user.id and not es_admin(request.user):
             return Response({"detalle": "Solo la sección solicitante puede firmar el acta."}, status=403)

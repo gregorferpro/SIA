@@ -1,3 +1,4 @@
+from usuarios.documentos import documentar, documentos_expediente, pdf_documento
 from decimal import Decimal, InvalidOperation
 
 from django.utils import timezone
@@ -277,6 +278,14 @@ class EstadoMantenimientoViewSet(
 class RequerimientoMantenimientoViewSet(
     viewsets.ModelViewSet
 ):
+
+    @action(detail=True, methods=['get'], url_path='documentos')
+    def documentos(self, request, pk=None):
+        return documentos_expediente(self, request, pk)
+
+    @action(detail=True, methods=['get'], url_path=r'documentos/(?P<documento_id>[0-9]+)/pdf')
+    def documento_pdf(self, request, pk=None, documento_id=None):
+        return pdf_documento(self, request, pk, documento_id)
 
     serializer_class = (
         RequerimientoMantenimientoSerializer
@@ -705,6 +714,13 @@ class RequerimientoMantenimientoViewSet(
                 requerimiento, "Ticket rechazado y notificado al solicitante.", request
             )
 
+        faltantes = [nombre for campo, nombre in [('titulo', 'título'), ('descripcion', 'descripción'), ('ubicacion', 'ubicación')]
+                     if not str(getattr(requerimiento, campo, '')).strip() or (campo == 'ubicacion' and str(requerimiento.ubicacion).strip().lower() in {'no especificado', 'sin especificar'})]
+        if not (requerimiento.evidencia_archivo or requerimiento.evidencia.strip()):
+            faltantes.append('evidencia')
+        if faltantes:
+            return Response({'detalle': 'Faltan requisitos: ' + ', '.join(faltantes), 'requisitos_faltantes': faltantes}, status=400)
+
         if not self._cambiar_estado(requerimiento, "VALIDADO"):
             return Response({"detalle": "No existe el estado VALIDADO."}, status=400)
 
@@ -1044,6 +1060,53 @@ class RequerimientoMantenimientoViewSet(
         from compras.expediente import completar_expediente_origen
         return completar_expediente_origen(request, self.get_object(), "requerimiento_mantenimiento")
 
+    @action(detail=True, methods=["get"], url_path=r"informes-pdf/(?P<tipo>tecnico|final)")
+    def informe_consulta_pdf(self, request, pk=None, tipo=None):
+        from django.http import HttpResponse
+        from soporte.informes_pdf import _documento_pdf
+        from usuarios.models import DocumentoProceso
+        from usuarios.documentos import pdf_documento
+        requerimiento = self.get_object()
+        titulo = "Informe tecnico de mantenimiento" if tipo == "tecnico" else "Informe final de mantenimiento"
+        documento = DocumentoProceso.objects.filter(mantenimiento=requerimiento, tipo=titulo.replace("tecnico", "t\u00e9cnico")).order_by('-creado_en').first()
+        if documento:
+            return pdf_documento(self, request, pk, documento.pk)
+        texto = requerimiento.informe_trabajo if tipo == "tecnico" else requerimiento.informe_final
+        if not texto:
+            return Response({"detalle": "Este informe todavia no fue elaborado."}, status=404)
+        contenido = _documento_pdf(titulo, "Consulta del informe registrado", requerimiento,
+            [("DATOS DEL REQUERIMIENTO", [("Solicitante", requerimiento.solicitante.nombre_completo), ("Ubicacion", requerimiento.ubicacion), ("Descripcion", requerimiento.descripcion)]),
+             ("CONTENIDO DEL INFORME", [("Informe registrado", texto)])], [("Origen", requerimiento.codigo)], unidad="MANTENIMIENTO")
+        respuesta = HttpResponse(contenido, content_type='application/pdf')
+        respuesta['Content-Disposition'] = f'inline; filename="informe-{tipo}-{requerimiento.codigo}.pdf"'
+        respuesta['Cache-Control'] = 'private, no-store'
+        return respuesta
+
+    @action(detail=True, methods=["get"], url_path="informe-requerimiento-pdf")
+    def informe_requerimiento_pdf(self, request, pk=None):
+        from compras.informes_origen import visualizar_informe_tecnico
+        return visualizar_informe_tecnico(self.get_object())
+
+    @action(detail=True, methods=["post"], url_path="validar-viabilidad-compra")
+    def validar_viabilidad_compra(self, request, pk=None):
+        if not (es_admin(request.user) or tiene_rol(request.user, 'SERVICIOS_GENERALES')):
+            return Response({'detalle': 'Solo el Jefe de Mantenimiento puede validar la viabilidad.'}, status=403)
+        requerimiento = self.get_object()
+        if requerimiento.estado_compra_componente != 'SOLICITADA' or requerimiento.derivado_compra:
+            return Response({'detalle': 'La compra no está pendiente de validación.'}, status=400)
+        from compras.informes_origen import asegurar_informe_tecnico
+        informe = asegurar_informe_tecnico(requerimiento)
+        cotizacion = requerimiento.cotizacion_archivo
+        if not informe or not cotizacion:
+            return Response({'detalle': 'Revise y adjunte el informe técnico y la cotización antes de validar.'}, status=400)
+        requerimiento.informe_compra = informe
+        requerimiento.cotizacion_archivo = cotizacion
+        requerimiento.estado_compra_componente = 'VIABLE'
+        requerimiento.save(update_fields=['informe_compra', 'cotizacion_archivo', 'estado_compra_componente', 'actualizado_en'])
+        registrar_bitacora(request=request, accion='VALIDAR_VIABILIDAD_MANTENIMIENTO', modulo='Mantenimiento',
+                           detalle=f'{requerimiento.codigo}: compra viable, pendiente de POA y proveído.', nivel='INFO')
+        return respuesta_requerimiento(requerimiento, 'Viabilidad validada. Adjunte el POA y el proveído para elevar la compra.', request)
+
     @action(detail=True, methods=["post"], url_path="evaluar-viabilidad-compra")
     def evaluar_viabilidad_compra(self, request, pk=None):
 
@@ -1055,7 +1118,7 @@ class RequerimientoMantenimientoViewSet(
 
         requerimiento = self.get_object()
 
-        if requerimiento.estado_compra_componente != "SOLICITADA":
+        if requerimiento.estado_compra_componente not in {"SOLICITADA", "VIABLE"} or requerimiento.derivado_compra:
             return Response(
                 {"detalle": "Este requerimiento no tiene una compra pendiente de evaluación."},
                 status=status.HTTP_400_BAD_REQUEST
@@ -1102,8 +1165,9 @@ class RequerimientoMantenimientoViewSet(
 
         from compras.models import SolicitudCompra
 
-        informe = requerimiento.informe_compra or request.FILES.get("informe")
-        proforma = requerimiento.cotizacion_archivo or request.FILES.get("proforma")
+        from compras.informes_origen import asegurar_informe_tecnico
+        informe = asegurar_informe_tecnico(requerimiento)
+        proforma = requerimiento.cotizacion_archivo
         poa = request.FILES.get("poa")
         pedido = request.FILES.get("pedido")
         if not all((informe, proforma, poa, pedido)):
@@ -1347,6 +1411,7 @@ class RequerimientoMantenimientoViewSet(
     # ======================================================
 
     @action(detail=True, methods=["post"], url_path="registrar-informe")
+    @documentar('Informe técnico de mantenimiento')
     def registrar_informe(self, request, pk=None):
 
         requerimiento = self.get_object()
@@ -1412,7 +1477,7 @@ class RequerimientoMantenimientoViewSet(
 
 
     # ======================================================
-    # 10. VERIFICAR FUNCIONAMIENTO  (Jefe de Mantenimiento)
+    # 10. VERIFICAR FUNCIONAMIENTO  (Solicitante)
     # ======================================================
     #
     # BPMN: ¿Problema resuelto? NO -> el caso vuelve a la atención
@@ -1421,28 +1486,16 @@ class RequerimientoMantenimientoViewSet(
     # ======================================================
 
     @action(detail=True, methods=["post"], url_path="verificar-funcionamiento")
+    @documentar('Verificación y conformidad de mantenimiento', solo_conforme=True)
     def verificar_funcionamiento(self, request, pk=None):
 
         requerimiento = self.get_object()
 
-        # El solicitante es quien prueba su propio requerimiento.
-        # El Jefe/admin conservan la opción de verificarlo también
-        # (por ejemplo si el solicitante no responde).
         es_solicitante = requerimiento.solicitante_id == request.user.id
-
-        if not (
-            es_admin(request.user)
-            or tiene_rol(request.user, "SERVICIOS_GENERALES")
-            or es_solicitante
-        ):
+        if not es_solicitante:
             return Response(
-                {
-                    "detalle": (
-                        "Solo el solicitante o el Jefe de Mantenimiento "
-                        "pueden verificar el funcionamiento."
-                    )
-                },
-                status=status.HTTP_403_FORBIDDEN
+                {"detalle": "Solo el solicitante puede verificar y registrar su conformidad."},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         if not estado_permitido(requerimiento, ["INFORME_REGISTRADO"]):
@@ -1456,7 +1509,17 @@ class RequerimientoMantenimientoViewSet(
         if resuelto not in [True, False]:
             return Response({"problema_resuelto": "Debe indicar True o False."}, status=400)
 
+        observaciones = str(request.data.get('observaciones', '')).strip()
+        if es_solicitante and requerimiento.conformidad_solicitante is True:
+            return Response({'detalle': 'Su conformidad ya fue registrada.'}, status=409)
+        if resuelto is False and not observaciones:
+            return Response({'observaciones': 'Debe indicar por qué el problema continúa.'}, status=400)
         ahora = timezone.now()
+        if es_solicitante:
+            requerimiento.conformidad_solicitante = resuelto
+            requerimiento.conformidad_solicitante_en = ahora
+            requerimiento.observaciones_conformidad = observaciones
+
         requerimiento.verificado_en = ahora
 
         if resuelto is False:
@@ -1465,6 +1528,15 @@ class RequerimientoMantenimientoViewSet(
             self._cambiar_estado(requerimiento, "EN_MANTENIMIENTO")
             requerimiento.rework_count += 1
             requerimiento.resultado_pruebas = ""
+            requerimiento.trabajo_realizado = ""
+            requerimiento.pruebas_en = None
+            requerimiento.verificado_en = None
+            requerimiento.conformidad_en = None
+            requerimiento.informe_elevado_en = None
+            requerimiento.informe_final = ""
+            if not es_solicitante:
+                requerimiento.conformidad_solicitante = None
+                requerimiento.conformidad_solicitante_en = None
             requerimiento.save()
 
             registrar_bitacora(
@@ -1484,6 +1556,9 @@ class RequerimientoMantenimientoViewSet(
                 request
             )
 
+        if not self._cambiar_estado(requerimiento, "CONFORMIDAD_INFORMADA"):
+            return Response({"detalle": "No existe el estado CONFORMIDAD_INFORMADA."}, status=400)
+        requerimiento.conformidad_en = ahora
         requerimiento.save()
 
         registrar_bitacora(
@@ -1496,25 +1571,27 @@ class RequerimientoMantenimientoViewSet(
 
         return respuesta_requerimiento(
             requerimiento,
-            "Funcionamiento verificado. Puede informar la conformidad.",
+            "Conformidad registrada por el solicitante. La jefatura puede elaborar el informe final.",
             request
         )
 
 
     # ======================================================
-    # 11. INFORMAR CONFORMIDAD  (Jefe de Mantenimiento)
+    # 11. INFORMAR CONFORMIDAD  (Solicitante)
     # ======================================================
 
     @action(detail=True, methods=["post"], url_path="informar-conformidad")
     def informar_conformidad(self, request, pk=None):
 
-        if not (es_admin(request.user) or tiene_rol(request.user, "SERVICIOS_GENERALES")):
+        requerimiento = self.get_object()
+        if requerimiento.solicitante_id != request.user.id:
             return Response(
-                {"detalle": "Solo el Jefe de Mantenimiento puede informar la conformidad."},
-                status=status.HTTP_403_FORBIDDEN
+                {"detalle": "Solo el solicitante puede informar la conformidad."},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
-        requerimiento = self.get_object()
+        if requerimiento.conformidad_solicitante is not True:
+            return Response({'detalle': 'Está pendiente la conformidad explícita del solicitante.'}, status=409)
 
         if not requerimiento.verificado_en:
             return Response(
@@ -1556,6 +1633,7 @@ class RequerimientoMantenimientoViewSet(
     # ======================================================
 
     @action(detail=True, methods=["post"], url_path="elaborar-informe-final")
+    @documentar('Informe final de mantenimiento')
     def elaborar_informe_final(self, request, pk=None):
 
         if not (es_admin(request.user) or tiene_rol(request.user, "SERVICIOS_GENERALES")):
@@ -1565,6 +1643,18 @@ class RequerimientoMantenimientoViewSet(
             )
 
         requerimiento = self.get_object()
+
+        if requerimiento.conformidad_solicitante is not True:
+            return Response(
+                {"detalle": "Esta pendiente la conformidad del solicitante."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        # Expedientes anteriores pueden tener la respuesta registrada sin
+        # haber avanzado aun al estado de informe final.
+        if estado_permitido(requerimiento, ["INFORME_REGISTRADO"]) and requerimiento.verificado_en:
+            if not self._cambiar_estado(requerimiento, "CONFORMIDAD_INFORMADA"):
+                return Response({"detalle": "No existe el estado CONFORMIDAD_INFORMADA."}, status=400)
+            requerimiento.conformidad_en = requerimiento.conformidad_solicitante_en
 
         if not estado_permitido(requerimiento, ["CONFORMIDAD_INFORMADA"]):
             return Response(

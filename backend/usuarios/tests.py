@@ -330,6 +330,22 @@ class SeguridadAutenticacionTests(APITestCase):
         self.assertEqual(r.status_code, 401, r.data)
         self.assertFalse(Token.objects.filter(pk=token.pk).exists())
 
+    def test_login_renueva_token_expirado_y_carga_datos_en_primer_ingreso(self):
+        usuario = self.crear_usuario(must_change=False)
+        anterior = Token.objects.create(user=usuario)
+        Token.objects.filter(pk=anterior.pk).update(
+            created=timezone.now() - timedelta(hours=settings.SESION_TOKEN_HORAS_VALIDEZ + 1)
+        )
+        cliente = APIClient()
+        respuesta = cliente.post('/api/usuarios/login/', {
+            'email': usuario.email, 'password': 'Prueba#2026',
+        }, format='json')
+        self.assertEqual(respuesta.status_code, 200, respuesta.data)
+        self.assertNotEqual(respuesta.data['token'], anterior.key)
+        cliente.credentials(HTTP_AUTHORIZATION=f"Token {respuesta.data['token']}")
+        self.assertEqual(cliente.get('/api/usuarios/mi-contexto/').status_code, 200)
+        self.assertEqual(cliente.get('/api/soporte/tickets/').status_code, 200)
+
     # ------------------------------------------------------
     # HU-02: CAMBIO OBLIGATORIO DE CONTRASEÑA
     # ------------------------------------------------------

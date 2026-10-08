@@ -1,32 +1,16 @@
 <template>
-  <div class="notification-layout">
-    <SolicitanteMenu v-if="!esTecnico" />
-    <aside v-else class="technician-nav">
-      <div class="brand-row">
-        <div class="brand"><b><img src="/img/emi.jpg" alt="EMI"></b><div><strong>SIA</strong><small>Soporte Técnico</small></div></div>
-      </div>
-      <p>MI TRABAJO</p>
-      <button @click="irSeccion('resumen')"><IconoSigta class="nav-icon" nombre="panel" :tamano="17" />Dashboard</button>
-      <button @click="irSeccion('misordenes')"><IconoSigta class="nav-icon" nombre="tickets" :tamano="17" />Mis órdenes<em>{{porRecibir.length}}</em></button>
-      <button @click="irSeccion('curso')"><IconoSigta class="nav-icon" nombre="mantenimiento" :tamano="17" />Trabajos en curso<em>{{trabajosCurso.length}}</em></button>
-      <button @click="irSeccion('cotizaciones')"><IconoSigta class="nav-icon" nombre="compras" :tamano="17" />Cotizaciones y requerimientos<em>{{porCotizar.length}}</em></button>
-      <button @click="irSeccion('trabajo')"><IconoSigta class="nav-icon" nombre="editar" :tamano="17" />Trabajos y anotaciones<em>{{porIntervenir.length}}</em></button>
-      <button @click="irSeccion('informes')"><IconoSigta class="nav-icon" nombre="reporte" :tamano="17" />Pruebas e informes<em>{{porProbar.length}}</em></button>
-      <button @click="irSeccion('compras')"><IconoSigta class="nav-icon" nombre="reloj" :tamano="17" />Seguimiento de compras<em>{{esperandoCompra.length}}</em></button>
-      <button class="active"><IconoSigta class="nav-icon" nombre="notificaciones" :tamano="17" />Notificaciones<em>{{pendientes}}</em></button>
-      <button @click="irSeccion('historial')"><IconoSigta class="nav-icon" nombre="historial" :tamano="17" />Historial</button>
-      <div class="bottom"><button class="logout" @click="mostrarLogout=true"><IconoSigta nombre="salir" :tamano="17" />Cerrar sesión</button></div>
-    </aside>
-
+  <div :class="['notification-layout', {embedded}]">
+    <SolicitanteMenu v-if="!embedded && !esTecnico" />
     <LogoutModal :visible="mostrarLogout" @cancelar="mostrarLogout=false" @confirmar="confirmarSalida" />
     <main class="page">
-    <header>
+    <header v-if="!embedded">
       <div><h1>Notificaciones</h1><p>Decisiones y novedades relacionadas con sus tickets.</p></div>
       <div class="header-actions">
         <button v-if="pendientes" class="read-all" @click="marcarTodas">Marcar todas como leídas</button>
       </div>
         <UsuarioHeader @actualizar="cargar" />
       </header>
+    <div v-if="embedded && pendientes" class="header-actions"><button class="read-all" @click="marcarTodas">Marcar todas como le&#237;das</button></div>
     <section class="stats">
       <article><i class="blue"><IconoSigta nombre="notificaciones" :tamano="19" /></i><div><small>Sin leer</small><b>{{pendientes}}</b></div></article>
       <article><i class="green"><IconoSigta nombre="validar" :tamano="19" /></i><div><small>Aprobadas</small><b>{{aprobadas}}</b></div></article>
@@ -53,6 +37,8 @@ import {useRoute,useRouter} from 'vue-router'
 import LogoutModal from '../components/LogoutModal.vue'
 import IconoSigta from '../components/IconoSigta.vue'
 import SolicitanteMenu from '../components/SolicitanteMenu.vue'
+const props = defineProps({ embedded: Boolean })
+const emit = defineEmits(["actualizadas"])
 const router=useRouter(),route=useRoute(),notificaciones=ref([]),cargando=ref(true)
 const usuario=JSON.parse(localStorage.getItem('sigta_usuario')||'{}'),roles=(usuario.roles||[]).map(r=>String(r?.codigo||r).toUpperCase())
 const esTecnico=route.path.startsWith('/especialista/')||roles.includes('ESPECIALISTA')||roles.includes('AGENTE')
@@ -61,38 +47,21 @@ const aprobadas=computed(()=>notificaciones.value.filter(n=>n.tipo==='EXITO').le
 const rechazadas=computed(()=>notificaciones.value.filter(n=>n.tipo==='RECHAZO').length)
 const headers=()=>({Authorization:`Token ${localStorage.getItem('sigta_token')}`,Accept:'application/json'})
 
-/* ==========================================================
-   CONTADORES DEL SIDEBAR TÉCNICO
-
-   Réplica de los mismos filtros de EspecialistaDashboardView
-   para que el menú muestre las mismas cifras en ambas vistas.
-========================================================== */
-const tickets=ref([])
-const misTickets=computed(()=>tickets.value.filter(t=>Number(t.tecnico_asignado)===Number(usuario.id)))
-const enEsperaDeCompra=t=>['SOLICITADA','VIABLE'].includes(t.estado_compra_componente)
-const porRecibir=computed(()=>misTickets.value.filter(t=>t.estado_codigo==='ASIGNADO'))
-const trabajosCurso=computed(()=>misTickets.value.filter(t=>['EN_DIAGNOSTICO','EN_EJECUCION'].includes(t.estado_codigo)))
-const esperandoCompra=computed(()=>misTickets.value.filter(t=>t.estado_codigo==='EN_EJECUCION'&&enEsperaDeCompra(t)))
-const porIntervenir=computed(()=>misTickets.value.filter(t=>t.estado_codigo==='EN_EJECUCION'&&!t.solucion&&!enEsperaDeCompra(t)))
-const porProbar=computed(()=>misTickets.value.filter(t=>t.estado_codigo==='EN_EJECUCION'&&!!t.solucion))
-const porCotizar=computed(()=>trabajosCurso.value.filter(t=>t.estado_codigo==='EN_EJECUCION'&&(t.requiere_compra||t.estado_compra_componente==='BORRADOR')&&!enEsperaDeCompra(t)&&t.estado_compra_componente!=='ENTREGADA'))
-
 async function cargar(){
   cargando.value=true
   try{
     const peticiones=[fetch('/api/soporte/notificaciones/',{headers:headers()})]
-    if(esTecnico)peticiones.push(fetch('/api/soporte/tickets/',{headers:headers()}))
-    const [r,rt]=await Promise.all(peticiones)
+    const [r]=await Promise.all(peticiones)
     const d=await r.json()
+    if(!r.ok)throw new Error(d.detalle || "No se pudieron cargar las notificaciones.")
     notificaciones.value=Array.isArray(d)?d:d.results||[]
-    if(rt){const dt=await rt.json();tickets.value=Array.isArray(dt)?dt:dt.results||[]}
+    emit("actualizadas", pendientes.value)
   }finally{cargando.value=false}
 }
-async function marcarLeida(n){await fetch(`/api/soporte/notificaciones/${n.id}/marcar-leida/`,{method:'POST',headers:headers()});n.leida=true}
-async function marcarTodas(){await fetch('/api/soporte/notificaciones/marcar-todas-leidas/',{method:'POST',headers:headers()});notificaciones.value.forEach(n=>n.leida=true)}
+async function marcarLeida(n){await fetch(`/api/soporte/notificaciones/${n.id}/marcar-leida/`,{method:'POST',headers:headers()});n.leida=true;emit("actualizadas",pendientes.value)}
+async function marcarTodas(){await fetch('/api/soporte/notificaciones/marcar-todas-leidas/',{method:'POST',headers:headers()});notificaciones.value.forEach(n=>n.leida=true);emit("actualizadas",pendientes.value)}
 async function verDetalle(n){if(!n.leida)await marcarLeida(n);router.push(esTecnico?{path:'/especialista/dashboard',query:{ticket:n.ticket}}:{path:'/usuario/mis-solicitudes',query:{proceso:'SOPORTE',id:n.ticket,origen:'notificaciones'}})}
 function fecha(v){return new Date(v).toLocaleString('es-BO',{dateStyle:'medium',timeStyle:'short'})}
-function irSeccion(vista){router.push({path:'/especialista/dashboard',query:{vista}})}
 const mostrarLogout=ref(false)
 function salir(){localStorage.removeItem('sigta_token');localStorage.removeItem('sigta_usuario');router.push('/login')}
 function confirmarSalida(){mostrarLogout.value=false;salir()}
@@ -100,6 +69,7 @@ onMounted(cargar)
 </script>
 
 <style scoped>
+.embedded .page{padding:0;width:100%}.embedded{min-height:0}
 *{box-sizing:border-box}
 .notification-layout{display:flex;min-height:100vh;background:var(--sigta-azul-tenue)}
 .notification-layout>.page{flex:1;min-width:0}
@@ -143,8 +113,10 @@ header p{margin:0;font-size:12px;color:var(--sigta-texto-suave)}
 @media(max-width:700px){.page{padding:20px}header{align-items:flex-start;flex-direction:column;gap:12px}.stats{grid-template-columns:1fr}.list article{grid-template-columns:38px 1fr}.actions{grid-column:1/-1;flex-direction:row}.actions button{flex:1}}
 </style>
 <style scoped>
+.embedded .page{padding:0;width:100%}.embedded{min-height:0}
 .technician-nav > button :deep(.icono-sigta){flex-shrink:0}
 </style>
 <style scoped>
+.embedded .page{padding:0;width:100%}.embedded{min-height:0}
 .technician-nav{position:sticky;top:0;width:var(--sigta-sidebar);min-width:var(--sigta-sidebar);height:100vh;padding:20px 14px;background:var(--sigta-azul);color:#fff;display:flex;flex-direction:column}.technician-nav .brand-row{display:flex;align-items:center}.technician-nav .brand{display:flex;align-items:center;gap:11px;padding:0 10px 20px;border-bottom:1px solid #ffffff20;width:100%}.technician-nav .brand>b{display:block;flex-shrink:0}.technician-nav .brand img{width:48px;height:48px;border-radius:10px;display:block}.technician-nav .brand strong,.technician-nav .brand small{display:block}.technician-nav .brand strong{font-size:22px}.technician-nav .brand small{color:var(--sigta-azul-texto-claro);font-size:11px;margin-top:3px}.technician-nav>p{font-size:10px;color:var(--sigta-texto-suave);font-weight:800;letter-spacing:1.4px;margin:14px 10px 8px}.technician-nav button{display:flex;align-items:center;gap:11px;width:100%;border:0;border-left:3px solid transparent;background:transparent;color:#fff!important;font-size:13px!important;font-weight:600!important;border-radius:8px;padding:0 12px;min-height:42px;cursor:pointer;text-align:left;margin:2px 0}.technician-nav>button :deep(.icono-sigta){flex-shrink:0}.technician-nav>button em{margin-left:auto;background:#ffffff1c;border-radius:10px;padding:2px 8px;font-style:normal}.technician-nav>button.active,.technician-nav>button:hover{background:#ffffff14;box-shadow:inset 3px 0 var(--sigta-mostaza-clara)}.technician-nav>button.active{color:var(--sigta-mostaza)!important}.technician-nav>.bottom{margin-top:auto;border-top:1px solid #ffffff20;padding-top:10px}.technician-nav>.bottom button{width:100%}.technician-nav>.bottom .logout{gap:14px;border:1px solid var(--sigta-mostaza);background:transparent;color:#fff!important;font-size:13px!important;box-shadow:inset 0 0 0 1px rgba(255,199,44,.35);transition:transform .3s cubic-bezier(.34,1.55,.5,1),background .2s ease,color .2s ease,box-shadow .2s ease}.technician-nav>.bottom .logout .icono-sigta{color:var(--sigta-mostaza);transition:color .2s ease}.technician-nav>.bottom .logout:hover{background:#FFB300;color:var(--sigta-azul)!important;transform:scale(1.09);box-shadow:0 14px 32px rgba(255,159,0,.55)}.technician-nav>.bottom .logout:hover .icono-sigta{color:var(--sigta-azul)}@media(max-width:700px){.notification-layout{display:block}.technician-nav{position:static;width:100%;min-width:0;height:auto}.technician-nav>p,.technician-nav>button:not(.active){display:none}.technician-nav>button.active{margin-top:10px}}
 </style>

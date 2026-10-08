@@ -616,6 +616,7 @@
              ESTADO
         ================================================ -->
 
+        <DocumentosExpediente v-if="requerimientoSeleccionado" base="/api/mantenimiento/requerimientos" :id="requerimientoSeleccionado.id" />
         <section class="status-grid">
 
           <article>
@@ -1842,6 +1843,7 @@
 
 
 <script setup>
+import DocumentosExpediente from '../components/DocumentosExpediente.vue'
 import UsuarioHeader from '../components/UsuarioHeader.vue'
 
 import {

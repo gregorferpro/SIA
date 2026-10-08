@@ -1,3 +1,4 @@
+from usuarios.archivos import firmar_urls
 from django.utils import timezone
 
 from rest_framework import serializers
@@ -203,7 +204,7 @@ class TicketSerializer(
         for campo in ("informe_compra", "cotizacion_archivo"):
             if data.get(campo):
                 data[campo] = urlsplit(data[campo]).path
-        return data
+        return firmar_urls(data, self.context.get('request'))
 
     class Meta:
 

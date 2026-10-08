@@ -1,5 +1,5 @@
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar daf-sidebar">
 
     <!-- =====================================================
          MARCA + BOTÓN DESPLEGABLE (móvil)
@@ -105,6 +105,7 @@
         <span>
           Emitir Certificación
         </span>
+        <span v-if="pendientesCertificacion" class="cert-nav-count" :aria-label="`${pendientesCertificacion} pendientes de certificación`">{{ pendientesCertificacion }}</span>
       </router-link>
 
     </nav>
@@ -141,7 +142,7 @@ import IconoSigta from './IconoSigta.vue'
 import LogoutModal from './LogoutModal.vue'
 
 import {
-  ref
+  ref, onMounted, onUnmounted, watch
 } from 'vue'
 
 import {
@@ -157,6 +158,28 @@ import {
    puede salir de router-link-active (marcaria las dos): se decide con
    el parametro ?seccion. No hay rutas ni permisos nuevos. */
 const route = useRoute()
+const pendientesCertificacion = ref(0)
+let contadorIntervalo
+async function actualizarPendientes() {
+  const token = localStorage.getItem('sigta_token')
+  if (!token) return
+  try {
+    const respuesta = await fetch('/api/compras/solicitudes/?bandeja=certificacion', { headers: { Authorization: `Token ${token}` } })
+    if (!respuesta.ok) return
+    const datos = await respuesta.json()
+    pendientesCertificacion.value = Array.isArray(datos) ? datos.length : datos.count ?? datos.results?.length ?? 0
+  } catch { /* El contador se actualizará en la siguiente consulta. */ }
+}
+onMounted(() => {
+  actualizarPendientes()
+  contadorIntervalo = window.setInterval(actualizarPendientes, 30000)
+  window.addEventListener('sia-certificaciones-actualizadas', actualizarPendientes)
+})
+onUnmounted(() => {
+  window.clearInterval(contadorIntervalo)
+  window.removeEventListener('sia-certificaciones-actualizadas', actualizarPendientes)
+})
+watch(() => route.fullPath, actualizarPendientes)
 const enDaf = computed(() => route.path === '/daf/dashboard')
 const enHistorial = computed(() => enDaf.value && route.query.seccion === 'historial')
 const enResumen = computed(() => enDaf.value && route.query.seccion === 'dashboard')
@@ -205,6 +228,8 @@ function confirmarCierreSesion() {
 
 
 <style scoped>
+.daf-sidebar .brand-row .brand { border-bottom:0!important; min-height:0!important; padding:0!important; }
+.cert-nav-count { margin-left:auto; flex-shrink:0; background:var(--sigta-mostaza); color:var(--sigta-azul)!important; min-width:22px; height:22px; display:grid; place-items:center; border-radius:50%; font-size:11px; font-weight:800; }
 /* Distintivo del icono: mismo formato y tamano que el panel de
    Mantenimiento (30x30, radio 8, fondo del color al 15%). */
 .icon-badge { flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; }

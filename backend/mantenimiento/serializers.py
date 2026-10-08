@@ -1,3 +1,4 @@
+from usuarios.archivos import firmar_urls
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -112,6 +113,18 @@ class RequerimientoMantenimientoSerializer(
         serializers.SerializerMethodField()
     )
 
+    sla_horas = serializers.SerializerMethodField()
+    sla_fecha_limite = serializers.SerializerMethodField()
+
+    def get_sla_horas(self, obj):
+        from .prioridades import SLA_POR_PRIORIDAD
+        return SLA_POR_PRIORIDAD.get(obj.prioridad_jefatura)
+
+    def get_sla_fecha_limite(self, obj):
+        from datetime import timedelta
+        horas = self.get_sla_horas(obj)
+        return (obj.clasificado_en + timedelta(hours=horas)).isoformat() if horas and obj.clasificado_en else None
+
 
     def to_representation(self, instance):
         from urllib.parse import urlsplit
@@ -119,7 +132,7 @@ class RequerimientoMantenimientoSerializer(
         for campo in ("informe_compra", "cotizacion_archivo"):
             if data.get(campo):
                 data[campo] = urlsplit(data[campo]).path
-        return data
+        return firmar_urls(data, self.context.get('request'))
 
     class Meta:
 
@@ -173,6 +186,7 @@ class RequerimientoMantenimientoSerializer(
 
             "auxiliar_asignado_nombre",
             "prioridad_jefatura",
+            "sla_horas", "sla_fecha_limite",
             "criterio_prioridad",
 
             "compra_vinculada",
@@ -231,7 +245,7 @@ class RequerimientoMantenimientoSerializer(
 
             "rework_count",
 
-            "conformidad_en",
+            "conformidad_en", "conformidad_solicitante", "conformidad_solicitante_en", "observaciones_conformidad",
 
             "informe_final",
 
@@ -277,7 +291,7 @@ class RequerimientoMantenimientoSerializer(
             "diagnostico", "plan_solucion", "diagnosticado_en",
             "estado_compra_componente", "costo_estimado", "cotizacion_archivo", "informe_compra",
             "motivo_no_viable", "resultado_pruebas", "pruebas_en",
-            "verificado_en", "rework_count", "conformidad_en",
+            "verificado_en", "rework_count", "conformidad_en", "conformidad_solicitante", "conformidad_solicitante_en", "observaciones_conformidad",
             "informe_final", "informe_elevado_en",
             "informe_recibido_director_en", "proceso_finalizado_en",
 

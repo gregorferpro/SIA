@@ -242,23 +242,20 @@
               {{ informeSeleccionado.informeTecnico }}
             </p>
 
-            <a
-              v-if="informeSeleccionado.pdf"
-              :href="informeSeleccionado.pdf"
-              target="_blank"
-              class="btn-cerrar"
-            >
-              Abrir informe final PDF
-            </a>
-
-            <template
-              v-for="respaldo in informeSeleccionado.respaldos"
-              :key="respaldo.nombre"
-            >
-              <a :href="respaldo.url" target="_blank" class="btn-cerrar">
-                {{ respaldo.nombre }}
-              </a>
-            </template>
+            <section class="documentos-informe" aria-label="Documentos del expediente">
+              <h4>Informes y documentos del expediente</h4>
+              <p v-if="cargandoDocumentos" role="status">Consultando documentos...</p>
+              <p v-if="errorDocumentos" role="alert">{{ errorDocumentos }}</p>
+              <button v-if="errorDocumentos" class="btn-cerrar" @click="cargarDocumentos(informeSeleccionado)">Volver a consultar</button>
+              <div class="documentos-informe-grid">
+                <button v-for="archivo in archivosInforme" :key="archivo.url" type="button" class="documento-informe" @click="visualizarArchivo(archivo)">
+                  <IconoSigta nombre="reporte" :tamano="22" />
+                  <span><strong>{{ archivo.nombre }}</strong><small>Visualizar documento</small></span>
+                </button>
+              </div>
+              <p v-if="!cargandoDocumentos && !archivosInforme.length">No hay documentos adjuntos disponibles.</p>
+              <p v-if="errorVisor" role="alert">{{ errorVisor }}</p>
+            </section>
 
           </div>
 
@@ -344,6 +341,18 @@
       @cerrar="ocultarGuardado"
     />
 
+    <div v-if="visorArchivo" class="archivo-informe-overlay" @click.self="cerrarVisor">
+      <section role="dialog" aria-modal="true" :aria-label="visorArchivo.nombre">
+        <header><strong>{{ visorArchivo.nombre }}</strong><button type="button" @click="cerrarVisor">Cerrar</button></header>
+        <p v-if="visorArchivo.cargando" role="status">Cargando documento...</p>
+        <div v-else class="archivo-informe-body">
+          <img v-if="visorArchivo.imagen" :src="visorArchivo.url" :alt="visorArchivo.nombre">
+          <iframe v-else-if="visorArchivo.pdf" :src="visorArchivo.url" :title="visorArchivo.nombre" />
+          <p v-else>Este formato puede descargarse para consultarlo.</p>
+        </div>
+        <footer v-if="visorArchivo.url"><a :href="visorArchivo.url" :download="visorArchivo.nombre">Descargar documento</a></footer>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -351,7 +360,7 @@
 <script setup>
 import UsuarioHeader from '../components/UsuarioHeader.vue'
 
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import AdminMenu
   from '../components/AdminMenu.vue'
@@ -503,9 +512,18 @@ function normalizarMantenimiento(requerimiento) {
     estadoNombre: requerimiento.estado_nombre || 'Enviado a Dirección',
     resumen: resumenDe(requerimiento.informe_final),
     contenido: requerimiento.informe_final,
-    informeTecnico: '',
-    pdf: null,
-    respaldos: [],
+    informeTecnico: requerimiento.informe_trabajo,
+    pdf: `/api/mantenimiento/requerimientos/${requerimiento.id}/informes-pdf/final/`,
+    compraId: requerimiento.compra_vinculada?.id,
+    respaldos: [
+      { nombre: 'Informe del técnico de mantenimiento', url: requerimiento.informe_trabajo ? `/api/mantenimiento/requerimientos/${requerimiento.id}/informes-pdf/tecnico/` : null },
+      { nombre: 'Informe de requerimiento de compra', url: requerimiento.informe_compra || requerimiento.compra_vinculada?.informe },
+      { nombre: 'Cotización / proforma del técnico', url: requerimiento.cotizacion_archivo || requerimiento.compra_vinculada?.proforma },
+      { nombre: 'Respaldo del trabajo técnico', url: requerimiento.fotografia_trabajo_url },
+      { nombre: 'Acta de conformidad firmada', url: requerimiento.compra_vinculada?.acta_conformidad },
+      { nombre: 'POA', url: requerimiento.compra_vinculada?.poa },
+      { nombre: 'Proveído', url: requerimiento.compra_vinculada?.pedido },
+    ].filter(archivo => archivo.url),
     leido: Boolean(requerimiento.informe_recibido_director_en),
     fechaElevado: fecha,
   }
@@ -533,6 +551,7 @@ function normalizarSoporte(ticket) {
     contenido: ticket.informe_final,
     informeTecnico: ticket.informe_tecnico,
     pdf: ticket.informe_final_pdf_url,
+    compraId: ticket.compra_vinculada?.id,
     respaldos: [
       { nombre: 'Informe PDF generado del técnico', url: ticket.informe_tecnico_pdf_url },
       { nombre: 'Informe final del jefe de carrera', url: ticket.informe_jefe_carrera_pdf_url },
@@ -612,15 +631,73 @@ async function cargarInformes() {
 function verDetalle(informe) {
 
   informeSeleccionado.value = informe
+  cargarDocumentos(informe)
 }
 
 
 function cerrarDetalle() {
+  cerrarVisor()
+  documentosDetalle.value = []
 
   informeSeleccionado.value = null
   confirmandoRecibir.value = false
 }
 
+
+const documentosDetalle = ref([])
+const cargandoDocumentos = ref(false)
+const errorDocumentos = ref('')
+const visorArchivo = ref(null)
+const errorVisor = ref('')
+let secuenciaVisor = 0
+const archivosInforme = computed(() => {
+  const informe = informeSeleccionado.value
+  if (!informe) return []
+  const archivos = [
+    ...(informe.pdf ? [{ nombre: 'Informe final PDF', url: informe.pdf }] : []),
+    ...documentosDetalle.value,
+    ...(informe.respaldos || []),
+  ]
+  return archivos.filter((archivo, indice) => archivos.findIndex(a => a.url === archivo.url) === indice)
+})
+async function cargarDocumentos(informe) {
+  documentosDetalle.value = []; errorDocumentos.value = ''; errorVisor.value = ''; cargandoDocumentos.value = true
+  const base = informe.jefatura === 'MANTENIMIENTO' ? '/api/mantenimiento/requerimientos' : '/api/soporte/tickets'
+  const consultas = [{ base: `${base}/${informe.origenId}`, actas: false }]
+  if (informe.compraId) consultas.push({ base: `/api/compras/solicitudes/${informe.compraId}`, actas: false }, { base: `/api/compras/solicitudes/${informe.compraId}`, actas: true })
+  const resultados = await Promise.allSettled(consultas.map(async consulta => {
+    const datos = await obtener(`${consulta.base}/${consulta.actas ? 'actas-almacen' : 'documentos'}/`)
+    return datos.flatMap(d => consulta.actas
+      ? [{ nombre: 'Acta de entrega original', url: d.original_url }, { nombre: 'Acta de entrega firmada', url: d.firmado_url }].filter(a => a.url)
+      : [{ nombre: d.tipo, url: `${consulta.base}/documentos/${d.id}/pdf/` }])
+  }))
+  if (informeSeleccionado.value !== informe) return
+  documentosDetalle.value = resultados.flatMap(r => r.status === 'fulfilled' ? r.value : [])
+  if (resultados.some(r => r.status === 'rejected')) errorDocumentos.value = 'No se pudieron consultar todos los documentos. Puede reintentar.'
+  cargandoDocumentos.value = false
+}
+function cerrarVisor() {
+  secuenciaVisor += 1
+  if (visorArchivo.value?.url) URL.revokeObjectURL(visorArchivo.value.url)
+  visorArchivo.value = null
+}
+onUnmounted(cerrarVisor)
+async function visualizarArchivo(archivo) {
+  cerrarVisor(); errorVisor.value = ''
+  const solicitud = secuenciaVisor
+  const vista = { nombre: archivo.nombre, cargando: true, url: '' }
+  visorArchivo.value = vista
+  try {
+    const r = await fetch(archivo.url, { headers: { Authorization: `Token ${token()}` }, cache: 'no-store' })
+    if (!r.ok) throw new Error('No fue posible visualizar este documento.')
+    const blob = await r.blob()
+    if (solicitud !== secuenciaVisor) return
+    visorArchivo.value = { ...vista, cargando: false, url: URL.createObjectURL(blob), imagen: blob.type.startsWith('image/'), pdf: blob.type.includes('pdf') }
+  } catch (e) {
+    if (solicitud !== secuenciaVisor) return
+    cerrarVisor(); errorVisor.value = e.message
+  }
+}
 
 async function recibirInforme() {
 
@@ -678,6 +755,8 @@ onMounted(cargarInformes)
 
 
 <style scoped>
+.documentos-informe{margin-top:20px;padding-top:16px;border-top:1px solid #dce5ef}.documentos-informe h4{margin:0 0 14px;color:var(--sigta-azul)}.documentos-informe-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:10px}.documento-informe{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid #dce5ef;border-radius:9px;background:#f7faff;color:var(--sigta-azul);text-align:left;cursor:pointer}.documento-informe:hover{background:#edf4fc;border-color:var(--sigta-azul)}.documento-informe strong,.documento-informe small{display:block}.documento-informe small{margin-top:5px;color:#64748b}.archivo-informe-overlay{position:fixed;inset:0;z-index:1800;background:#082b4fcc;display:grid;place-items:center;padding:18px}.archivo-informe-overlay>section{width:min(1100px,96vw);max-height:95vh;background:white;border-radius:12px;overflow:auto}.archivo-informe-overlay header{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:16px;background:var(--sigta-azul);color:white}.archivo-informe-overlay header button{border:1px solid #ffffff66;border-radius:7px;padding:8px 12px;background:transparent;color:white;cursor:pointer}.archivo-informe-body{height:72vh;display:grid;place-items:center;padding:12px}.archivo-informe-body iframe{width:100%;height:100%;border:0}.archivo-informe-body img{max-width:100%;max-height:100%;object-fit:contain}.archivo-informe-overlay footer{padding:12px 18px}.archivo-informe-overlay footer a{color:var(--sigta-azul)}
+
 
 .layout {
   min-height: 100vh;

@@ -392,6 +392,9 @@ class RequerimientoMantenimiento(models.Model):
     rework_count = models.PositiveIntegerField(default=0)
 
     conformidad_en = models.DateTimeField(null=True, blank=True)
+    conformidad_solicitante = models.BooleanField(null=True, blank=True)
+    conformidad_solicitante_en = models.DateTimeField(null=True, blank=True)
+    observaciones_conformidad = models.TextField(blank=True)
 
 
     # ======================================================

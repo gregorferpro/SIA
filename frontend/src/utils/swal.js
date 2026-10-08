@@ -1,23 +1,23 @@
 import Swal from 'sweetalert2'
 import 'sweetalert2/dist/sweetalert2.min.css'
 
-// Tema morado institucional para TODOS los diálogos del sistema
+// Tema azul, blanco y mostaza para TODOS los diálogos del sistema
 // (alert, confirm, prompt), igual a la tarjeta de "guardado".
 const estiloSigtaSwal = document.createElement('style')
 estiloSigtaSwal.textContent = `
   .sigta-swal-popup {
-    border-radius: 26px !important;
+    border-radius: 12px !important;
     padding: 30px 22px !important;
-    background: linear-gradient(140deg, #5b1780 0%, #9b1fb8 55%, #b52bd0 100%) !important;
-    box-shadow: 0 26px 60px rgba(70, 8, 100, .5) !important;
+    background: var(--sigta-blanco) !important;
+    box-shadow: 0 26px 60px rgba(18, 58, 107, .2) !important;
   }
   .sigta-swal-title {
-    color: #fff !important;
+    color: var(--sigta-azul) !important;
     font-size: 19px !important;
     font-weight: 800 !important;
   }
   .sigta-swal-text {
-    color: #fff !important;
+    color: var(--sigta-azul) !important;
     font-size: 15px !important;
     font-weight: 600 !important;
   }
@@ -26,25 +26,25 @@ estiloSigtaSwal.textContent = `
   }
   .sigta-swal-confirm {
     padding: 10px 30px !important;
-    border-radius: 999px !important;
-    background: #fff !important;
-    color: #7a1ba8 !important;
+    border-radius: 8px !important;
+    background: var(--sigta-azul) !important;
+    color: var(--sigta-blanco) !important;
     font-size: 14px !important;
     font-weight: 800 !important;
     border: none !important;
     box-shadow: none !important;
   }
   .sigta-swal-confirm:hover {
-    background: #f3e8fa !important;
+    background: var(--sigta-azul-medio) !important;
   }
   .sigta-swal-cancel {
-    padding: 10px 26px !important;
-    border-radius: 999px !important;
+    padding: 10px 12px !important;
+    border-radius: 8px !important;
     background: rgba(255, 255, 255, .16) !important;
-    color: #fff !important;
+    color: var(--sigta-azul) !important;
     font-size: 14px !important;
     font-weight: 800 !important;
-    border: 1px solid rgba(255, 255, 255, .4) !important;
+    border: 1px solid var(--sigta-azul) !important;
     box-shadow: none !important;
   }
   .sigta-swal-cancel:hover {
@@ -52,14 +52,14 @@ estiloSigtaSwal.textContent = `
   }
   .sigta-swal-input {
     border-radius: 10px !important;
-    border: none !important;
+    border: 1px solid var(--sigta-borde) !important;
     box-shadow: none !important;
   }
 `
 document.head.appendChild(estiloSigtaSwal)
 
 export const SigtaModal = Swal.mixin({
-  iconColor: '#fff',
+  iconColor: '#123a6b',
   allowOutsideClick: false,
   buttonsStyling: false,
   customClass: {

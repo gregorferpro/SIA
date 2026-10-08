@@ -1,9 +1,11 @@
 <template>
   <RouterView />
+  <FirmaDialogo />
 </template>
 
 <script setup>
 import { RouterView } from 'vue-router'
+import FirmaDialogo from './components/FirmaDialogo.vue'
 </script>
 
 <style>

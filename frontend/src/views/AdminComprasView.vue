@@ -215,7 +215,7 @@
           >✕</button>
         </div>
 
-        <div class="documento-body" @scroll="onModalScroll">
+        <div class="documento-body" @scroll="onModalScroll"><DocumentosExpediente v-if="compraSeleccionada" base="/api/compras/solicitudes" :id="compraSeleccionada.id" /><CotizacionesCompra v-if="compraSeleccionada" :id="compraSeleccionada.id" />
 
           <div
             :class="['estado-banner', claseBucket(bucketEstado(compraSeleccionada?.estado))]"
@@ -598,6 +598,8 @@
 
 
 <script setup>
+import DocumentosExpediente from '../components/DocumentosExpediente.vue'
+import CotizacionesCompra from '../components/CotizacionesCompra.vue'
 import UsuarioHeader from '../components/UsuarioHeader.vue'
 import { coincideProceso } from '../utils/portal'
 import IconoSigta from '../components/IconoSigta.vue'

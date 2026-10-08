@@ -386,7 +386,7 @@
                   class="view"
                   @click="verDetalle(item)"
                 >
-                  Ver
+                  Ver detalles
                 </button>
 
 
@@ -498,6 +498,7 @@
         </div>
 
 
+
         <div class="detail-status">
 
           <span
@@ -519,7 +520,7 @@
 
         </div>
 
-        <div class="timeline">
+        <div v-if="false" class="timeline">
           <div
             v-for="(paso, indice) in pasosSolicitud(solicitudSeleccionada)"
             :key="paso.nombre"
@@ -789,19 +790,23 @@
         </div>
 
 
-        <div v-if="solicitudSeleccionada?.proceso === 'SOPORTE' && solicitudSeleccionada?.informe_final_pdf_url" class="field full">
-          <label>Informe final del jefe de carrera</label>
-          <template v-if="solicitudSeleccionada?.informe_jefe_carrera_en">
-            <p>{{ solicitudSeleccionada.informe_jefe_carrera }}</p>
-            <a v-if="solicitudSeleccionada.informe_jefe_carrera_pdf_url" :href="solicitudSeleccionada.informe_jefe_carrera_pdf_url" target="_blank" class="evidence-button">Ver informe PDF enviado</a>
-          </template>
-          <template v-else>
-            <textarea v-model="informeJefeCarrera" rows="4" placeholder="Registre la conclusión y observaciones del trabajo realizado."></textarea>
-            <button type="button" class="primary" :disabled="enviandoInformeCarrera || !informeJefeCarrera.trim()" @click="enviarInformeJefeCarrera">
-              {{ enviandoInformeCarrera ? 'Enviando...' : 'Generar informe y enviar al director' }}
-            </button>
-          </template>
-        </div>
+        <section class="request-documents" aria-label="Informes y documentos de la solicitud">
+          <div class="request-documents__heading">
+            <IconoSigta nombre="reporte" :tamano="22" />
+            <div>
+              <h3>Informes y documentos</h3>
+              <p>Consulte los informes emitidos y las constancias de su solicitud.</p>
+            </div>
+          </div>
+          <div v-if="informesDisponibles.length" class="request-documents__links">
+            <a v-for="informe in informesDisponibles" :key="informe.url" :href="informe.url" target="_blank" rel="noopener noreferrer" class="request-document-link">
+              <IconoSigta nombre="reporte" :tamano="20" />
+              <span><strong>{{ informe.nombre }}</strong><small>Ver informe PDF</small></span>
+              <span aria-hidden="true">&#8599;</span>
+            </a>
+          </div>
+          <DocumentosSolicitante v-if="solicitudSeleccionada" :base="solicitudSeleccionada.proceso === 'MANTENIMIENTO' ? '/api/mantenimiento/requerimientos' : '/api/soporte/tickets'" :id="solicitudSeleccionada.id" />
+        </section>
 
         <div class="modal-footer">
 
@@ -1182,6 +1187,7 @@
 
 
 <script setup>
+import DocumentosSolicitante from '../components/DocumentosSolicitante.vue'
 import UsuarioHeader from '../components/UsuarioHeader.vue'
 import AdminMenu from '../components/AdminMenu.vue'
 
@@ -1288,8 +1294,6 @@ const observacionConformidad = ref('')
 const mensajeConformidad = ref('')
 const guardandoConformidad = ref(false)
 const visorEvidencia = ref('')
-const informeJefeCarrera = ref('')
-const enviandoInformeCarrera = ref(false)
 
 const vistaVerificaciones = computed(() => route.query.vista === 'verificaciones')
 watch(() => route.query, query => {
@@ -1300,6 +1304,16 @@ watch(() => route.query, query => {
 const verificacionesPendientes = computed(() => solicitudes.value.filter(
   item => item.proceso === 'SOPORTE' && item.estado_codigo === 'PENDIENTE_CONFORMIDAD'
 ))
+const informesDisponibles = computed(() => {
+  const item = solicitudSeleccionada.value
+  if (!item) return []
+  return [
+    { nombre: 'Informe de requerimiento de compra', url: item.informe_compra },
+    { nombre: 'Informe final', url: item.informe_final_pdf_url },
+    { nombre: 'Informe técnico', url: item.informe_tecnico_pdf_url },
+    { nombre: 'Informe del jefe de carrera', url: item.informe_jefe_carrera_pdf_url },
+  ].filter(informe => informe.url)
+})
 const evidenciasTecnicas = computed(() => {
   const item = solicitudSeleccionada.value
   if (!item) return []
@@ -1838,7 +1852,6 @@ function verDetalle(
   solicitudSeleccionada.value =
     item
 
-  informeJefeCarrera.value = item.informe_jefe_carrera || ''
 
 
   mostrarDetalle.value =
@@ -1859,26 +1872,6 @@ function cerrarDetalle() {
     router.push(route.meta.portalDirector ? '/admin/dashboard' : '/usuario/dashboard')
   }
 }
-
-async function enviarInformeJefeCarrera() {
-  enviandoInformeCarrera.value = true
-  try {
-    const respuesta = await fetch(`/api/soporte/tickets/${solicitudSeleccionada.value.id}/elaborar-informe-jefe-carrera/`, {
-      method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ informe_jefe_carrera: informeJefeCarrera.value.trim() }),
-    })
-    const datos = await respuesta.json().catch(() => ({}))
-    if (!respuesta.ok) throw new Error(datos.detalle || datos.informe_jefe_carrera || 'No se pudo enviar el informe.')
-    await cargarTodo()
-    solicitudSeleccionada.value = solicitudes.value.find(item => item.proceso === 'SOPORTE' && item.id === solicitudSeleccionada.value.id) || datos.ticket
-    mostrarMensaje('Informe del jefe de carrera generado y enviado al director.')
-  } catch (error) {
-    mostrarMensaje(String(error.message || error), true)
-  } finally {
-    enviandoInformeCarrera.value = false
-  }
-}
-
 
 // ==========================================================
 // CATÁLOGOS SOPORTE
@@ -3535,6 +3528,25 @@ function cerrarSesion() {
   color: var(--sigta-texto-suave);
   text-align: right;
 }
+
+.request-documents {
+  margin: 22px 0;
+  padding: 20px;
+  border: 1px solid #dce5ef;
+  border-radius: 14px;
+  background: #f7f9fc;
+}
+.request-documents__heading { display: flex; align-items: center; gap: 12px; color: var(--sigta-azul); }
+.request-documents__heading h3 { margin: 0; font-size: 16px; }
+.request-documents__heading p { margin: 5px 0 0; font-size: 13px; color: var(--sigta-texto-suave); }
+.request-documents__links { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr)); gap: 10px; margin: 16px 0; }
+.request-document-link { display: flex; align-items: center; gap: 12px; padding: 14px; border: 1px solid #dce5ef; border-radius: 10px; background: white; color: var(--sigta-azul); text-decoration: none; transition: border-color .15s, box-shadow .15s; }
+.request-document-link:hover { border-color: var(--sigta-azul); box-shadow: 0 3px 12px #123a6b12; }
+.request-document-link > span:first-of-type { flex: 1; }
+.request-document-link strong, .request-document-link small { display: block; }
+.request-document-link strong { font-size: 13px; }
+.request-document-link small { margin-top: 5px; font-size: 12px; color: var(--sigta-texto-suave); }
+.request-document-link:focus-visible { outline: 2px solid var(--sigta-azul); outline-offset: 3px; }
 
 .evidence-button {
   margin-top: 8px;

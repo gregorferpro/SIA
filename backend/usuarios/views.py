@@ -1655,6 +1655,13 @@ def login_view(
         )
     )
 
+    # Un login válido debe entregar una sesión vigente, aunque existiera
+    # un token de un ingreso anterior que ya haya expirado.
+    horas = getattr(settings, 'SESION_TOKEN_HORAS_VALIDEZ', 12)
+    if timezone.now() > token.created + timezone.timedelta(hours=horas):
+        token.delete()
+        token = Token.objects.create(user=usuario)
+
 
     # ======================================================
     # ROLES

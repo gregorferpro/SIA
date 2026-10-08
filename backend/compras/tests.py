@@ -113,16 +113,21 @@ class FlujoCajaChicaTests(APITestCase):
         self.assertEqual(r.data["estado"], "APROBADO_PARA_DESEMBOLSO")
 
         self.autenticar("TESORERIA")
+        recibo = self.client.post(f"/api/compras/solicitudes/{pk}/recibos-tesoreria/", {
+            "monto_desembolsado": "100.00", "responsable_adquisicion": "Responsable de Almacén", "tipo_desembolso": "Efectivo",
+        }, format="json")
+        self.assertEqual(recibo.status_code, 201, recibo.data)
         r = self.client.post(f"/api/compras/solicitudes/{pk}/desembolsar/", {
             "monto_desembolsado": "100.00",
-            "responsable_adquisicion": "Almacén",
+            "responsable_adquisicion": "Responsable de Almacén",
             "tipo_desembolso": "Efectivo",
-            "comprobante_desembolso": self.archivo("desembolso.pdf"),
+            "recibo_id": recibo.data['id'],
+            "recibo_firmado": SimpleUploadedFile('firmado.pdf', b'%PDF-1.4\n', content_type='application/pdf'),
         }, format="multipart")
         self.assertEqual(r.data["estado"], "FONDOS_DESEMBOLSADOS")
 
         self.autenticar("ENCARGADO_COMPRAS_ALMACEN")
-        r = self.client.post(f"/api/compras/solicitudes/{pk}/confirmar-recepcion-fondos/", {}, format="json")
+        r = self.client.post(f"/api/compras/solicitudes/{pk}/confirmar-recepcion-fondos/", {'firma': [[[10, 10], [50, 40], [90, 20]]]}, format="json")
         self.assertEqual(r.status_code, 200, r.data)
         r = self.client.post(f"/api/compras/solicitudes/{pk}/registrar-compra/", {
             "monto_real": "100.00",
@@ -143,15 +148,18 @@ class FlujoCajaChicaTests(APITestCase):
         }, format="json")
         self.assertEqual(r.data["estado"], "COMPRA_REGISTRADA", r.data)
 
+        acta_generada = self.client.post(f"/api/compras/solicitudes/{pk}/actas-almacen/", {"recibe": "Juan Perez", "entrega_confirmada": True}, format="json")
+        self.assertEqual(acta_generada.status_code, 201, acta_generada.data)
         r = self.client.post(f"/api/compras/solicitudes/{pk}/entregar-con-acta/", {
-            "acta_conformidad": self.archivo("acta.pdf"),
+            "acta_id": acta_generada.data["id"],
+            "acta_conformidad": SimpleUploadedFile("acta-firmada.pdf", b"%PDF-1.4\nDocumento firmado", content_type="application/pdf"),
         }, format="multipart")
         self.assertEqual(r.data["estado"], "COMPRADO_Y_ENTREGADO", r.data)
 
         # El cierre ocurre en el carril del solicitante: firma el acta y
         # recibe formalmente el bien.
         self.autenticar("SOLICITANTE")
-        r = self.client.post(f"/api/compras/solicitudes/{pk}/firmar-acta/", {}, format="json")
+        r = self.client.post(f"/api/compras/solicitudes/{pk}/firmar-acta/", {'firma': [[[10, 10], [50, 40], [90, 20]]]}, format="json")
         self.assertEqual(r.data["estado"], "DESCARGO_PENDIENTE_LIQUIDACION", r.data)
 
         r = self.client.post(f"/api/compras/solicitudes/{pk}/recibir-solicitud/", {}, format="json")
@@ -277,14 +285,19 @@ class SeguridadFlujoComprasTests(APITestCase):
         self.autenticar("DIRECTOR")
         self.client.post(f"/api/compras/solicitudes/{pk}/visto-bueno-director/", {}, format="json")
         self.autenticar("TESORERIA")
+        recibo = self.client.post(f"/api/compras/solicitudes/{pk}/recibos-tesoreria/", {
+            "monto_desembolsado": "100.00", "responsable_adquisicion": "Responsable de Almacén", "tipo_desembolso": "Efectivo",
+        }, format="json")
+        self.assertEqual(recibo.status_code, 201, recibo.data)
         self.client.post(f"/api/compras/solicitudes/{pk}/desembolsar/", {
             "monto_desembolsado": "100.00",
-            "responsable_adquisicion": "Almacén",
+            "responsable_adquisicion": "Responsable de Almacén",
             "tipo_desembolso": "Efectivo",
-            "comprobante_desembolso": self.archivo("desembolso.pdf"),
+            "recibo_id": recibo.data['id'],
+            "recibo_firmado": SimpleUploadedFile('firmado.pdf', b'%PDF-1.4\n', content_type='application/pdf'),
         }, format="multipart")
         self.autenticar("ENCARGADO_COMPRAS_ALMACEN")
-        self.client.post(f"/api/compras/solicitudes/{pk}/confirmar-recepcion-fondos/", {}, format="json")
+        self.client.post(f"/api/compras/solicitudes/{pk}/confirmar-recepcion-fondos/", {'firma': [[[10, 10], [50, 40], [90, 20]]]}, format="json")
         self.client.post(f"/api/compras/solicitudes/{pk}/registrar-compra/", {
             "monto_real": "100.00",
             "proveedor": "Proveedor",
@@ -299,17 +312,20 @@ class SeguridadFlujoComprasTests(APITestCase):
             "cantidad_entregada": 1,
             "entregado_a": "Sección solicitante",
         }, format="json")
+        acta_generada = self.client.post(f"/api/compras/solicitudes/{pk}/actas-almacen/", {"recibe": "Juan Perez", "entrega_confirmada": True}, format="json")
+        self.assertEqual(acta_generada.status_code, 201, acta_generada.data)
         self.client.post(f"/api/compras/solicitudes/{pk}/entregar-con-acta/", {
-            "acta_conformidad": self.archivo("a.pdf"),
+            "acta_id": acta_generada.data["id"],
+            "acta_conformidad": SimpleUploadedFile("acta-firmada.pdf", b"%PDF-1.4\nDocumento firmado", content_type="application/pdf"),
         }, format="multipart")
 
         # Solo la sección solicitante cierra el proceso.
         self.autenticar("TESORERIA")
-        r = self.client.post(f"/api/compras/solicitudes/{pk}/firmar-acta/", {}, format="json")
+        r = self.client.post(f"/api/compras/solicitudes/{pk}/firmar-acta/", {'firma': [[[10, 10], [50, 40], [90, 20]]]}, format="json")
         self.assertEqual(r.status_code, 403, r.data)
 
         self.autenticar("SOLICITANTE")
-        self.client.post(f"/api/compras/solicitudes/{pk}/firmar-acta/", {}, format="json")
+        self.client.post(f"/api/compras/solicitudes/{pk}/firmar-acta/", {'firma': [[[10, 10], [50, 40], [90, 20]]]}, format="json")
         r = self.client.post(f"/api/compras/solicitudes/{pk}/recibir-solicitud/", {}, format="json")
         self.assertEqual(r.status_code, 200, r.data)
 

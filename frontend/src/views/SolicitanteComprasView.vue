@@ -175,6 +175,7 @@
               {{ solicitud.estado_nombre }}
             </span>
 
+            <DocumentosExpediente base="/api/compras/solicitudes" :id="solicitud.id" />
             <div class="actions">
 
               <button
@@ -212,7 +213,7 @@
               </button>
 
               <button
-                v-if="solicitud.estado === 'COMPRADO_Y_ENTREGADO'"
+                v-if="solicitud.estado === 'COMPRADO_Y_ENTREGADO' && !solicitud.receptor_acta?.tecnico"
                 class="edit"
                 @click="firmarActa(solicitud)"
               >
@@ -547,6 +548,8 @@
 
 
 <script setup>
+import { solicitarFirma } from '../utils/firma'
+import DocumentosExpediente from '../components/DocumentosExpediente.vue'
 import UsuarioHeader from '../components/UsuarioHeader.vue'
 import {
   computed,
@@ -1102,7 +1105,7 @@ function seleccionarDocumento(accept = '*/*') {
   })
 }
 
-async function accionCompra(solicitud, endpoint, mensajeOk) {
+async function accionCompra(solicitud, endpoint, mensajeOk, cuerpo = {}) {
   try {
     const respuesta = await fetch(`/api/compras/solicitudes/${solicitud.id}/${endpoint}/`, {
       method: 'POST',
@@ -1110,7 +1113,7 @@ async function accionCompra(solicitud, endpoint, mensajeOk) {
         Authorization: `Token ${token()}`,
         'Content-Type': 'application/json',
       },
-      body: '{}',
+      body: JSON.stringify(cuerpo),
     })
     const resultado = await respuesta.json().catch(() => ({}))
     if (!respuesta.ok) throw new Error(resultado.detalle || 'No fue posible completar la acción.')
@@ -1123,10 +1126,9 @@ async function accionCompra(solicitud, endpoint, mensajeOk) {
 /* BPMN: "Firmar acta de conformidad" — la sección solicitante deja
    constancia de que recibió el bien conforme. */
 async function firmarActa(solicitud) {
-  if (!await window.sigtaConfirm(
-    `¿Confirma que recibió el bien de ${solicitud.codigo} conforme y firma el acta?`
-  )) return
-  await accionCompra(solicitud, 'firmar-acta', 'Acta de conformidad firmada.')
+  const firma = await solicitarFirma('Acta de conformidad y recepción', solicitud.codigo)
+  if (!firma) return
+  await accionCompra(solicitud, 'firmar-acta', 'Acta de conformidad firmada.', {firma})
 }
 
 

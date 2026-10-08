@@ -1,3 +1,4 @@
+from usuarios.documentos import documentar, documentos_expediente, pdf_documento, validar_firma
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -434,6 +435,20 @@ class EstadoTicketViewSet(
 class TicketViewSet(
     viewsets.ModelViewSet
 ):
+
+    @action(detail=True, methods=['get'], url_path='documentos')
+    def documentos(self, request, pk=None):
+        return documentos_expediente(self, request, pk)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        from usuarios.archivos import firmar_urls
+        if hasattr(response, 'data'):
+            response.data = firmar_urls(response.data, request)
+        return super().finalize_response(request, response, *args, **kwargs)
+
+    @action(detail=True, methods=['get'], url_path=r'documentos/(?P<documento_id>[0-9]+)/pdf')
+    def documento_pdf(self, request, pk=None, documento_id=None):
+        return pdf_documento(self, request, pk, documento_id)
 
     serializer_class = (
         TicketSerializer
@@ -1864,6 +1879,26 @@ class TicketViewSet(
         from compras.expediente import completar_expediente_origen
         return completar_expediente_origen(request, self.get_object(), "ticket_soporte")
 
+    @action(detail=True, methods=["get"], url_path="informe-requerimiento-pdf")
+    def informe_requerimiento_pdf(self, request, pk=None):
+        from compras.informes_origen import visualizar_informe_tecnico
+        return visualizar_informe_tecnico(self.get_object())
+
+    @action(detail=True, methods=["post"], url_path="validar-viabilidad-compra")
+    def validar_viabilidad_compra(self, request, pk=None):
+        if not tiene_permiso(request.user, "AUTORIZAR_SOLICITUD_COMPRA_TI"):
+            return respuesta_sin_permiso("AUTORIZAR_SOLICITUD_COMPRA_TI")
+        ticket = self.get_object()
+        if ticket.estado_compra_componente != "SOLICITADA" or ticket.codigo_compra_vinculada:
+            return Response({"detalle": "La compra no está pendiente de validación."}, status=400)
+        from compras.informes_origen import asegurar_informe_tecnico
+        asegurar_informe_tecnico(ticket)
+        if not ticket.cotizacion_archivo:
+            return Response({"detalle": "El requerimiento del técnico debe incluir su informe generado y la cotización."}, status=400)
+        ticket.estado_compra_componente = "VIABLE"
+        ticket.save(update_fields=["estado_compra_componente", "actualizado_en"])
+        return Response({"mensaje": "Viabilidad validada. Adjunte el POA y el proveído para elevar la compra."})
+
     @action(
         detail=True,
         methods=["post"],
@@ -2020,8 +2055,9 @@ class TicketViewSet(
         # de módulo entre soporte y compras.
         from compras.models import SolicitudCompra
 
-        informe = ticket.informe_compra or request.FILES.get("informe")
-        proforma = ticket.cotizacion_archivo or request.FILES.get("proforma")
+        from compras.informes_origen import asegurar_informe_tecnico
+        informe = asegurar_informe_tecnico(ticket)
+        proforma = ticket.cotizacion_archivo
         poa = request.FILES.get("poa")
         pedido = request.FILES.get("pedido")
         if not all((informe, proforma, poa, pedido)):
@@ -2257,6 +2293,7 @@ class TicketViewSet(
         methods=["post"],
         url_path="pruebas-tecnicas"
     )
+    @documentar('Informe técnico de soporte', firma_obligatoria=True)
     def pruebas_tecnicas(
         self,
         request,
@@ -2408,7 +2445,7 @@ class TicketViewSet(
 
         ticket.informe_tecnico_pdf.save(
             f"informe-tecnico-{ticket.codigo}.pdf",
-            ContentFile(generar_informe_tecnico(ticket, informe_tecnico)),
+            ContentFile(generar_informe_tecnico(ticket, informe_tecnico, validar_firma(request.data.get("firma")), request.user.nombre_completo)),
             save=False,
         )
 
@@ -2672,6 +2709,7 @@ class TicketViewSet(
         methods=["post"],
         url_path="informar-conformidad"
     )
+    @documentar('Conformidad del solicitante', solo_conforme=True, permitir_firma=False)
     def informar_conformidad(
         self,
         request,
@@ -3057,6 +3095,7 @@ class TicketViewSet(
         methods=["post"],
         url_path="elaborar-informe-final"
     )
+    @documentar('Informe final de soporte', firma_obligatoria=True)
     def elaborar_informe_final(
         self,
         request,
@@ -3129,10 +3168,15 @@ class TicketViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        from usuarios.models import DocumentoProceso
+        if ticket.conformidad_usuario is not True:
+            return Response({'detalle': 'El solicitante debe registrar su conformidad.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not DocumentoProceso.objects.filter(soporte=ticket, tipo='Informe técnico de soporte', usuario_id=ticket.tecnico_asignado_id).exclude(firma=[]).exists():
+            return Response({'detalle': 'El técnico debe firmar su informe antes de elevar el informe final.'}, status=status.HTTP_400_BAD_REQUEST)
         ticket.informe_final = informe
         ticket.informe_final_pdf.save(
             f"informe-final-{ticket.codigo}.pdf",
-            ContentFile(informe_final_jefatura(ticket, informe)),
+            ContentFile(informe_final_jefatura(ticket, informe, validar_firma(request.data.get("firma")), request.user.nombre_completo)),
             save=False,
         )
         ticket.estado = estado_cerrado

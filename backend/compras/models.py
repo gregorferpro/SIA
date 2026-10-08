@@ -1,8 +1,47 @@
+from usuarios.almacenamiento import AlmacenamientoPrivado
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
 from usuarios.models import Area
+
+
+class ActaEntregaAlmacen(models.Model):
+    solicitud = models.ForeignKey('compras.SolicitudCompra', on_delete=models.PROTECT, related_name='actas_almacen')
+    referencia = models.UUIDField(unique=True, editable=False)
+    datos = models.JSONField()
+    generado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    generado_en = models.DateTimeField(auto_now_add=True)
+    original = models.FileField(upload_to='almacen/actas/%Y/%m/', storage=AlmacenamientoPrivado())
+    firmado = models.FileField(upload_to='almacen/actas_firmadas/%Y/%m/', storage=AlmacenamientoPrivado(), blank=True)
+    confirmado_en = models.DateTimeField(null=True, blank=True)
+
+
+class ReciboTesoreria(models.Model):
+    """Original emitido y copia firmada del desembolso, conservados para auditoría."""
+    solicitud = models.ForeignKey('compras.SolicitudCompra', on_delete=models.PROTECT, related_name='recibos_tesoreria')
+    referencia = models.UUIDField(unique=True, editable=False)
+    datos = models.JSONField()
+    generado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    generado_en = models.DateTimeField(auto_now_add=True)
+    original = models.FileField(upload_to='tesoreria/recibos/%Y/%m/', storage=AlmacenamientoPrivado())
+    firmado = models.FileField(upload_to='tesoreria/firmados/%Y/%m/', storage=AlmacenamientoPrivado(), blank=True)
+    comprobante = models.FileField(upload_to='tesoreria/comprobantes/%Y/%m/', storage=AlmacenamientoPrivado(), blank=True)
+    confirmado_en = models.DateTimeField(null=True, blank=True)
+
+
+class CotizacionCompra(models.Model):
+    solicitud = models.ForeignKey('compras.SolicitudCompra', on_delete=models.PROTECT, related_name='cotizaciones')
+    proveedor = models.CharField(max_length=180)
+    descripcion = models.TextField()
+    cantidad = models.PositiveIntegerField()
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2)
+    documento = models.FileField(upload_to='cotizaciones/%Y/%m/', storage=AlmacenamientoPrivado())
+    seleccionada = models.BooleanField(default=False)
+    creada_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    creado_en = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['solicitud'], condition=models.Q(seleccionada=True), name='una_cotizacion_seleccionada')]
 
 
 class SolicitudCompra(models.Model):
