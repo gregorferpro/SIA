@@ -53,9 +53,24 @@ ALLOWED_HOSTS = [
     if host.strip()
 ]
 
-if not DEBUG:
-    # Solo se activan bajo HTTPS real; en desarrollo (DEBUG=True)
-    # forzarlas rompería el servidor local por HTTP.
+# sia-nginx (10.10.10.1) termina 80/443 y habla con Gunicorn por HTTP.
+# DJANGO_BEHIND_PROXY indica a Django que confíe en el esquema de Nginx.
+# DJANGO_USE_HTTPS activa la redirección y las cookies seguras; en el
+# laboratorio local (HTTP, DEBUG=True) quedan apagadas.
+BEHIND_PROXY = os.environ.get('DJANGO_BEHIND_PROXY', 'False') == 'True'
+USE_HTTPS = os.environ.get('DJANGO_USE_HTTPS', 'False') == 'True'
+
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS', '').split(',')
+    if origin.strip()
+]
+
+if BEHIND_PROXY:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    USE_X_FORWARDED_HOST = True
+
+if not DEBUG and USE_HTTPS:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
@@ -96,6 +111,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+
+    'whitenoise.middleware.WhiteNoiseMiddleware',
 
     'django.contrib.sessions.middleware.SessionMiddleware',
 
@@ -157,15 +174,30 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # BASE DE DATOS
 # ==========================================================
 
-DATABASES = {
-    'default': {
-        'ENGINE':
-            'django.db.backends.sqlite3',
-
-        'NAME':
-            BASE_DIR / 'db.sqlite3',
+# Sin variables, el desarrollo sigue en SQLite.
+# En sia-app (10.10.10.2) se define DJANGO_DB_ENGINE=postgresql.
+# PostgreSQL escucha solo en 127.0.0.1 de esa misma máquina.
+if os.environ.get('DJANGO_DB_ENGINE', 'sqlite') == 'postgresql':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DJANGO_DB_NAME', 'sia'),
+            'USER': os.environ.get('DJANGO_DB_USER', 'sia'),
+            'PASSWORD': os.environ.get('DJANGO_DB_PASSWORD', ''),
+            'HOST': os.environ.get('DJANGO_DB_HOST', '127.0.0.1'),
+            'PORT': os.environ.get('DJANGO_DB_PORT', '5432'),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE':
+                'django.db.backends.sqlite3',
+
+            'NAME':
+                BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
 # ==========================================================
@@ -265,8 +297,22 @@ USE_TZ = True
 # ==========================================================
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# El CSS del admin lo sirve Gunicorn (WhiteNoise). El Vue compilado
+# no vive aquí: Nginx lo publica desde /var/www/sia.
+if not DEBUG:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND':
+                'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        },
+    }
 
 # ==========================================================
 # USUARIO PERSONALIZADO
