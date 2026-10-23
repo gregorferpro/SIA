@@ -14,7 +14,7 @@
         </div>
 
         <div class="brand-text">
-          <h2>SIA</h2>
+          <h2>SIA-del GREGOR</h2>
 
           <span>
             Sistema Integrado de Atención
