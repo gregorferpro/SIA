@@ -14,7 +14,7 @@
         </div>
 
         <div class="brand-text">
-          <h2>SIA-del GREGOR</h2>
+          <h2>SIA EMI</h2>
 
           <span>
             Sistema Integrado de Atención
@@ -282,9 +282,9 @@ function confirmarCierreSesion() {
 
   background:
     rgba(
-      255,
-      255,
-      255,
+      200,
+      200,
+      200,
       .18
     );
 }
